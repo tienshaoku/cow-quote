@@ -1,63 +1,64 @@
+#[path = "constant.rs"]
 mod constant;
+mod secret;
 
 use std::sync::Arc;
 
 use ethers::{
-    contract::{Contract, EthEvent},
+    contract::EthEvent,
     providers::{Provider, Ws},
-    types::{Address, Bytes, Filter, U256},
+    types::{Address, Bytes, Filter, ValueOrArray, U256},
 };
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
-pub struct Trade {
+pub struct TradeEvent {
     #[ethevent(indexed)]
     pub owner: Address,
-    #[serde(rename = "sellToken")]
     pub sell_token: Address,
-    #[serde(rename = "buyToken")]
     pub buy_token: Address,
-    #[serde(rename = "sellAmount")]
     pub sell_amount: U256,
-    #[serde(rename = "buyAmount")]
     pub buy_amount: U256,
-    #[serde(rename = "feeAmount")]
     pub fee_amount: U256,
-    #[serde(rename = "orderUid")]
     pub order_uid: Bytes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
-pub struct Settlement {
+#[ethevent(name = "Transfer")]
+pub struct TransferEvent {
     #[ethevent(indexed)]
-    pub solver: Address,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
-#[ethevent(name = "Trade")]
-pub struct Interaction {
+    pub from: Address,
     #[ethevent(indexed)]
-    pub target: Address,
-    #[serde(rename = "sellToken")]
+    pub to: Address,
     pub value: U256,
-    #[serde(rename = "buyToken")]
-    pub selector: [u8; 4],
 }
-
-use futures::StreamExt;
 
 pub async fn run() -> eyre::Result<()> {
-    let provider = Provider::<Ws>::connect(constant::ETH_RPC).await?;
+    let provider = Provider::<Ws>::connect(secret::ETH_RPC).await?;
     let provider = Arc::new(provider);
 
-    let contract_address = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41".parse::<Address>()?;
-    let filter = Filter::new().address(contract_address);
+    let contract_address = constant::GPv2SETTLEMENT.parse::<Address>()?;
+    let trade_filter = Filter::new().address(contract_address);
 
-    let event = Trade::new::<_, Provider<Ws>>(filter, Arc::clone(&provider));
-    let mut transfers = event.subscribe().await?.take(1);
-    while let Some(log) = transfers.next().await {
-        println!("Transfer: {:?}", log);
+    let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&provider));
+    let mut trades = trade_event.subscribe().await?.take(1);
+    while let Some(trade) = trades.next().await {
+        let trade = trade?;
+        println!("Trade: {:?}", trade);
+
+        let transfer_filter = Filter::new()
+            .event("Transfer(address,address,uint256)")
+            .address(ValueOrArray::Array(vec![trade.sell_token, trade.buy_token]));
+
+        let transfer_event =
+            TransferEvent::new::<_, Provider<Ws>>(transfer_filter, Arc::clone(&provider));
+        let transfers = transfer_event.query().await?;
+
+        for transfer in transfers {
+            println!("Related Transfer: {:?}", transfer);
+        }
     }
 
     Ok(())
