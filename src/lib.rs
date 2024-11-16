@@ -1,25 +1,20 @@
 mod constant;
+mod format;
+mod ierc20_abi;
 #[path = "secret.rs"]
 mod secret;
 
 use ethers::{
     contract::EthEvent,
-    prelude::abigen,
     providers::{Provider, Ws},
     types::{Address, Bytes, Filter, U256},
-    utils::format_units,
 };
+use format::{format_decimals, format_into_four_decimal_point};
 use futures::StreamExt;
+use ierc20_abi::IERC20;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-abigen!(
-    IERC20,
-    r#"[
-    function decimals() public view virtual returns (uint8)
-    ]"#
-);
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
@@ -77,11 +72,11 @@ pub async fn run() -> eyre::Result<()> {
     let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&provider));
     let mut stream = trade_event.stream().await?.with_meta().take(3);
     while let Some(Ok((trade, meta))) = stream.next().await {
-        println!("Trade: {:#?}", trade);
+        println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
 
         let order_response = get_order(&order_uid.to_string()).await?;
-        println!("\nOrder Response: {:#?}", order_response);
+        println!("Order Response: {:#?}\n", order_response);
 
         if order_response.buy_type == "erc20"
             && order_response.sell_type == "erc20"
@@ -106,7 +101,7 @@ pub async fn run() -> eyre::Result<()> {
                 sell_token_decimals,
                 buy_token_decimals,
             );
-            println!("\nOrder: {:#?}", order);
+            println!("Order: {:#?}\n", order);
         }
     }
 
@@ -153,30 +148,4 @@ fn compute_surplus(
         net_surplus,
         surplus_percentage,
     }
-}
-
-fn trim_decimal_point(amount: &str) -> String {
-    if amount.ends_with(".0000") {
-        amount.trim_end_matches(".0000").to_string()
-    } else {
-        amount.to_string()
-    }
-}
-
-fn format_into_four_decimal_point<T: std::fmt::Display>(amount: T) -> String {
-    let formatted = format!("{:.4}", amount);
-    trim_decimal_point(&formatted)
-}
-
-fn format_into_decimals<T: std::fmt::Display>(amount: T, decimals: u32) -> String {
-    let formatted = format!("{:.*}", decimals as usize, amount);
-    trim_decimal_point(&formatted)
-}
-
-fn format_decimals(amount: &str, decimals: u32) -> String {
-    format_into_decimals(
-        format_units(U256::from_dec_str(amount).unwrap(), decimals).unwrap(),
-        // make it 18 for precision here
-        18,
-    )
 }
