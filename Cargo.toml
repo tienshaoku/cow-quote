@@ -1,0 +1,13 @@
+[package]
+name = "cow-vs-uni"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ethers = { version = "2.0.8", features = ["ws"] }
+tokio = { version = "1", features = ["full"]}
+eyre = "0.6"
+hex = "0.4"
+futures = "0.3"
+serde = "1.0.215"
+serde_with = "3.11.0"
