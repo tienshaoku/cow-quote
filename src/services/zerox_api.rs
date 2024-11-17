@@ -41,7 +41,7 @@ pub async fn get_zerox_price_quote(
         .await?
         .json()
         .await?;
-    println!("{:#?}", response);
+    // println!("{:#?}", response);
 
     // Extract all sources from the fills array
     let empty_vec = Vec::new();

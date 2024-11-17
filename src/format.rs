@@ -13,11 +13,11 @@ pub fn format_into_four_decimal_point<T: std::fmt::Display>(amount: T) -> String
     trim_decimal_point(&formatted)
 }
 
-pub fn format_decimals(amount: &str, decimals: u32) -> String {
+pub fn format_decimals(amount: &str, decimals: u8) -> String {
     let formatted = format!(
         "{:.*}",
         18_usize,
-        format_units(U256::from_dec_str(amount).unwrap(), decimals).unwrap()
+        format_units(U256::from_dec_str(amount).unwrap(), decimals as u32).unwrap()
     );
     trim_decimal_point(&formatted)
 }

@@ -8,6 +8,7 @@ pub mod services;
 
 use ethers::{
     contract::EthEvent,
+    middleware::Middleware,
     providers::{Provider, Ws},
     types::{Address, Bytes, Filter, U256},
 };
@@ -52,9 +53,17 @@ pub async fn run() -> eyre::Result<()> {
 
         // 0x has only sell orders
         if cow_api_response.is_sell() {
+            let timestamp = if let Some(block) = &provider.get_block(meta.block_number).await? {
+                block.timestamp
+            } else {
+                U256::zero()
+            };
+
             let order = Order::from_cow_api_response(
                 Arc::clone(&provider),
                 order_uid.to_string(),
+                meta.block_number.as_u64(),
+                timestamp.as_u64(),
                 &cow_api_response,
             )
             .await?;

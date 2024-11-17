@@ -5,33 +5,42 @@ use crate::services::cow_api::CowAPIResponse;
 
 use ethers::{
     providers::{Provider, Ws},
-    types::{Address, H160},
+    types::Address,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Order {
     uid: String,
-    owner: Address,
-    buy_token: Address,
-    sell_token: Address,
-    buy_decimals: u32,
-    sell_decimals: u32,
+    owner: String,
+
+    buy_token: String,
+    sell_token: String,
+    buy_decimals: u8,
+    sell_decimals: u8,
+
     buy: String,
     sell: String,
     executed_buy: String,
     executed_sell: String,
+
     net_surplus: String,
     surplus_percentage: String,
+
+    block_number: u64,
+    timestamp: u64,
 }
 
 impl Order {
     pub async fn from_cow_api_response(
         provider: Arc<Provider<Ws>>,
         uid: String,
+        block_number: u64,
+        timestamp: u64,
         response: &CowAPIResponse,
     ) -> eyre::Result<Self> {
-        let (buy_token, buy_decimals, buy, executed_buy) = process_order_info(
+        let (buy_decimals, buy, executed_buy) = process_order_info(
             Arc::clone(&provider),
             &response.buy_token(),
             &response.buy(),
@@ -39,7 +48,7 @@ impl Order {
         )
         .await?;
 
-        let (sell_token, sell_decimals, sell, executed_sell) = process_order_info(
+        let (sell_decimals, sell, executed_sell) = process_order_info(
             Arc::clone(&provider),
             &response.sell_token(),
             &response.sell(),
@@ -62,9 +71,9 @@ impl Order {
 
         Ok(Order {
             uid,
-            owner: response.owner().parse::<Address>()?,
-            buy_token,
-            sell_token,
+            owner: response.owner().to_string(),
+            buy_token: response.buy_token().to_string(),
+            sell_token: response.sell_token().to_string(),
             buy_decimals,
             sell_decimals,
             buy,
@@ -73,6 +82,8 @@ impl Order {
             executed_sell,
             net_surplus: format_into_four_decimal_point(net_surplus),
             surplus_percentage,
+            block_number,
+            timestamp,
         })
     }
 }
@@ -82,14 +93,13 @@ async fn process_order_info(
     address: &str,
     planned_amount: &str,
     executed_amount: &str,
-) -> eyre::Result<(H160, u32, String, String)> {
-    let token_addr = address.parse::<Address>()?;
-
+) -> eyre::Result<(u8, String, String)> {
     let is_weth = address == constant::WETH;
-    let decimals = get_token_decimals(Arc::clone(&provider), token_addr, is_weth).await?;
+    let decimals =
+        get_token_decimals(Arc::clone(&provider), address.parse::<Address>()?, is_weth).await?;
 
     let planned = format_decimals(planned_amount, decimals);
     let executed = format_decimals(executed_amount, decimals);
 
-    Ok((token_addr, decimals, planned, executed))
+    Ok((decimals, planned, executed))
 }

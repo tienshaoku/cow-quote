@@ -22,11 +22,11 @@ pub async fn get_token_decimals(
     provider: Arc<Provider<Ws>>,
     token: Address,
     is_weth: bool,
-) -> eyre::Result<u32> {
+) -> eyre::Result<u8> {
     if is_weth {
         Ok(18)
     } else {
         let erc20 = IERC20::new(token, provider);
-        Ok(erc20.decimals().call().await? as u32)
+        Ok(erc20.decimals().call().await? as u8)
     }
 }
