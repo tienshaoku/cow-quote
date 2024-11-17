@@ -21,7 +21,7 @@ pub struct Order {
     buy_decimals: u8,
     sell_decimals: u8,
 
-    buy: String,
+    min_buy: String,
     sell: String,
     executed_buy: String,
     executed_sell: String,
@@ -29,12 +29,12 @@ pub struct Order {
     net_surplus: String,
     surplus_percentage: String,
 
-    zerox_executed_buy: String,
-    zerox_buy: String,
+    zerox_quote_buy: String,
+    zerox_min_buy: String,
     zerox_sources: Vec<String>,
-    compared_executed_buy: String,
-    compared_buy: String,
-    compared_executed_buy_percentage: String,
+    compared_executed_with_zerox_quote: String,
+    compared_min_buy: String,
+    compared_with_zerox_percentage: String,
 
     block_number: u64,
     timestamp: u64,
@@ -48,7 +48,7 @@ impl Order {
         timestamp: u64,
         response: &CowAPIResponse,
     ) -> eyre::Result<Self> {
-        let (buy_decimals, buy, executed_buy) = process_order_info(
+        let (buy_decimals, min_buy, executed_buy) = process_order_info(
             Arc::clone(&provider),
             &response.buy_token(),
             &response.buy(),
@@ -67,8 +67,9 @@ impl Order {
         let mut net_surplus: f64 = 0.0;
         let mut surplus_percentage: String;
 
-        net_surplus = executed_buy.parse::<f64>().unwrap() - buy.parse::<f64>().unwrap();
-        surplus_percentage = format_four_decimal_point(net_surplus / buy.parse::<f64>().unwrap());
+        net_surplus = executed_buy.parse::<f64>().unwrap() - min_buy.parse::<f64>().unwrap();
+        surplus_percentage =
+            format_four_decimal_point(net_surplus / min_buy.parse::<f64>().unwrap());
 
         Ok(Order {
             uid,
@@ -77,7 +78,7 @@ impl Order {
             sell_token: response.sell_token().to_string(),
             buy_decimals,
             sell_decimals,
-            buy,
+            min_buy,
             sell,
             executed_buy,
             executed_sell,
@@ -85,31 +86,38 @@ impl Order {
             surplus_percentage,
             block_number,
             timestamp,
-            zerox_executed_buy: "".to_string(),
-            zerox_buy: "".to_string(),
+            zerox_quote_buy: "".to_string(),
+            zerox_min_buy: "".to_string(),
             zerox_sources: vec![],
-            compared_executed_buy: "".to_string(),
-            compared_buy: "".to_string(),
-            compared_executed_buy_percentage: "".to_string(),
+            compared_executed_with_zerox_quote: "".to_string(),
+            compared_min_buy: "".to_string(),
+            compared_with_zerox_percentage: "".to_string(),
         })
     }
 
     pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
         let decimals: u8 = self.buy_decimals;
-        let zerox_executed_buy = format_decimals(response.buy(), decimals);
-        let zerox_buy = format_decimals(response.min_buy(), decimals);
 
-        let compared_executed_buy =
-            compare_with_zerox(&self.executed_buy, &zerox_executed_buy, decimals);
+        let zerox_quote_buy = format_decimals(response.buy(), decimals);
+        let zerox_min_buy = format_decimals(response.min_buy(), decimals);
 
-        self.zerox_executed_buy = zerox_executed_buy;
-        self.zerox_buy = zerox_buy.clone();
+        let compared_executed_with_zerox_quote =
+            compare_with_zerox(&self.executed_buy, &zerox_quote_buy, decimals);
+
+        self.zerox_quote_buy = zerox_quote_buy;
+        self.zerox_min_buy = zerox_min_buy.clone();
         self.zerox_sources = response.sources().to_vec();
-        self.compared_executed_buy = compared_executed_buy.clone();
-        self.compared_buy = compare_with_zerox(&self.buy, &zerox_buy, decimals);
-        self.compared_executed_buy_percentage = format_four_decimal_point(
-            &compared_executed_buy.parse::<f64>().unwrap() / self.buy.parse::<f64>().unwrap(),
-        );
+
+        self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
+        self.compared_min_buy = compare_with_zerox(&self.min_buy, &zerox_min_buy, decimals);
+        self.compared_with_zerox_percentage = if response.is_empty() {
+            "1".to_string()
+        } else {
+            format_four_decimal_point(
+                &compared_executed_with_zerox_quote.parse::<f64>().unwrap()
+                    / self.min_buy.parse::<f64>().unwrap(),
+            )
+        };
     }
 }
 

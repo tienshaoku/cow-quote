@@ -48,7 +48,7 @@ pub async fn run() -> eyre::Result<()> {
         let order_uid = trade.order_uid;
 
         let cow_api_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
-        println!("Order Response: {:#?}\n", cow_api_response);
+        // println!("Order Response: {:#?}\n", cow_api_response);
 
         // 0x has only sell orders
         if cow_api_response.is_sell() && cow_api_response.sell() == cow_api_response.executed_sell()
@@ -76,7 +76,7 @@ pub async fn run() -> eyre::Result<()> {
                 cow_api_response.owner(),
             )
             .await?;
-            println!("0x Response: {:#?}\n", zerox_response);
+            // println!("0x Response: {:#?}\n", zerox_response);
 
             order.update_zerox_comparison(zerox_response);
             println!("Order: {:#?}\n", order);

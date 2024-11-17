@@ -21,6 +21,21 @@ impl ZeroXResponse {
     pub fn sources(&self) -> &Vec<String> {
         &self.sources
     }
+
+    pub fn is_empty(&self) -> bool {
+        // cast then compare to avoid empty string with many 0 suffixes
+        self.buy.parse::<f64>().unwrap_or(0.0) == 0.0
+            && self.min_buy.parse::<f64>().unwrap_or(0.0) == 0.0
+            && self.sources.is_empty()
+    }
+
+    fn from_empty() -> Self {
+        Self {
+            buy: "0".to_string(),
+            min_buy: "0".to_string(),
+            sources: vec![],
+        }
+    }
 }
 
 pub async fn get_zerox_price_quote(
@@ -65,12 +80,17 @@ pub async fn get_zerox_price_quote(
         .filter_map(|fill: &serde_json::Value| fill["source"].as_str().map(String::from))
         .collect();
 
-    // TODO: handle if response is empty
-    Ok(ZeroXResponse {
+    let mut response = ZeroXResponse {
         buy: extract_string_from_value(&response, "buyAmount"),
         min_buy: extract_string_from_value(&response, "minBuyAmount"),
         sources,
-    })
+    };
+
+    if response.is_empty() {
+        response = ZeroXResponse::from_empty();
+    }
+
+    Ok(response)
 }
 
 fn extract_string_from_value(value: &serde_json::Value, key: &str) -> String {
