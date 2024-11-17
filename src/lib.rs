@@ -15,6 +15,7 @@ use futures::StreamExt;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::cow_api::{get_cowswap_order, CowAPIResponse};
+use services::zerox_api::get_zerox_price_quote;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
@@ -38,7 +39,7 @@ pub async fn run() -> eyre::Result<()> {
     let trade_filter = Filter::new().address(settlement_contract);
 
     let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&provider));
-    let mut stream = trade_event.stream().await?.with_meta().take(3);
+    let mut stream = trade_event.stream().await?.with_meta().take(1);
     while let Some(Ok((trade, meta))) = stream.next().await {
         println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
@@ -54,6 +55,16 @@ pub async fn run() -> eyre::Result<()> {
         .await?;
 
         println!("Order: {:#?}\n", order);
+
+        let quote = get_zerox_price_quote(
+            "1",
+            order_response.sell_token(),
+            order_response.buy_token(),
+            order_response.sell(),
+            order_response.owner(),
+        )
+        .await?;
+        println!("{:#?}", quote);
     }
 
     Ok(())
