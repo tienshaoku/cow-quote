@@ -1,6 +1,6 @@
 mod constant;
 mod format;
-mod ierc20_abi;
+mod ierc20;
 mod order;
 #[path = "secret.rs"]
 mod secret;
@@ -13,7 +13,7 @@ use ethers::{
 };
 use format::format_decimals;
 use futures::StreamExt;
-use ierc20_abi::IERC20;
+use ierc20::get_token_decimals;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::cow_api::*;
@@ -49,26 +49,14 @@ pub async fn run() -> eyre::Result<()> {
         println!("Order Response: {:#?}\n", order_response);
 
         let is_sell_weth = order_response.sell_token() == constant::WETH;
-        let is_buy_weth = order_response.buy_token() == constant::WETH;
-
-        let mut sell_token_decimals = 0;
-        let mut buy_token_decimals = 0;
-
         let sell_token = order_response.sell_token().parse::<Address>()?;
-        if is_sell_weth {
-            sell_token_decimals = 18;
-        } else {
-            let erc20 = IERC20::new(sell_token, Arc::clone(&provider));
-            sell_token_decimals = erc20.decimals().call().await? as u32;
-        }
+        let sell_token_decimals =
+            get_token_decimals(Arc::clone(&provider), sell_token, is_sell_weth).await?;
 
+        let is_buy_weth = order_response.buy_token() == constant::WETH;
         let buy_token = order_response.buy_token().parse::<Address>()?;
-        if is_buy_weth {
-            buy_token_decimals = 18;
-        } else {
-            let erc20 = IERC20::new(buy_token, Arc::clone(&provider));
-            buy_token_decimals = erc20.decimals().call().await? as u32;
-        }
+        let buy_token_decimals =
+            get_token_decimals(Arc::clone(&provider), buy_token, is_buy_weth).await?;
 
         let executed_buy = format_decimals(&order_response.executed_buy(), buy_token_decimals);
         let executed_sell = format_decimals(&order_response.executed_sell(), sell_token_decimals);
