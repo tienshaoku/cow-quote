@@ -3,6 +3,7 @@ mod format;
 mod ierc20_abi;
 #[path = "secret.rs"]
 mod secret;
+pub mod services;
 
 use ethers::{
     contract::EthEvent,
@@ -12,8 +13,8 @@ use ethers::{
 use format::{format_decimals, format_into_four_decimal_point};
 use futures::StreamExt;
 use ierc20_abi::IERC20;
-use reqwest;
 use serde::{Deserialize, Serialize};
+use services::cow_api::*;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
@@ -27,24 +28,6 @@ pub struct TradeEvent {
     pub buy_amount: U256,
     pub fee_amount: U256,
     pub order_uid: Bytes,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OrderResponse {
-    owner: String,
-    #[serde(rename = "buyToken")]
-    buy_token: String,
-    #[serde(rename = "sellToken")]
-    sell_token: String,
-    #[serde(rename = "buyAmount")]
-    buy: String,
-    #[serde(rename = "sellAmount")]
-    sell: String,
-    #[serde(rename = "executedBuyAmount")]
-    executed_buy: String,
-    #[serde(rename = "executedSellAmount")]
-    executed_sell: String,
-    kind: String,
 }
 
 #[derive(Debug)]
@@ -72,16 +55,16 @@ pub async fn run() -> eyre::Result<()> {
         println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
 
-        let order_response = get_order(&order_uid.to_string()).await?;
+        let order_response: OrderResponse = get_cowswap_order(&order_uid.to_string()).await?;
         println!("Order Response: {:#?}\n", order_response);
 
-        let is_sell_weth = order_response.sell_token == constant::WETH;
-        let is_buy_weth = order_response.buy_token == constant::WETH;
+        let is_sell_weth = order_response.sell_token() == constant::WETH;
+        let is_buy_weth = order_response.buy_token() == constant::WETH;
 
         let mut sell_token_decimals = 0;
         let mut buy_token_decimals = 0;
 
-        let sell_token = order_response.sell_token.parse::<Address>()?;
+        let sell_token = order_response.sell_token().parse::<Address>()?;
         if is_sell_weth {
             sell_token_decimals = 18;
         } else {
@@ -89,7 +72,7 @@ pub async fn run() -> eyre::Result<()> {
             sell_token_decimals = erc20.decimals().call().await? as u32;
         }
 
-        let buy_token = order_response.buy_token.parse::<Address>()?;
+        let buy_token = order_response.buy_token().parse::<Address>()?;
         if is_buy_weth {
             buy_token_decimals = 18;
         } else {
@@ -109,26 +92,18 @@ pub async fn run() -> eyre::Result<()> {
     Ok(())
 }
 
-async fn get_order(order_uid: &str) -> Result<OrderResponse, reqwest::Error> {
-    let url: String = format!("https://api.cow.fi/mainnet/api/v1/orders/{}", order_uid);
-
-    let response = reqwest::get(&url).await?.json::<OrderResponse>().await?;
-
-    Ok(response)
-}
-
 fn compute_surplus(
     uid: String,
     response: &OrderResponse,
     sell_token_decimals: u32,
     buy_token_decimals: u32,
 ) -> Order {
-    let executed_buy = format_decimals(&response.executed_buy, buy_token_decimals);
-    let executed_sell = format_decimals(&response.executed_sell, sell_token_decimals);
-    let buy = format_decimals(&response.buy, buy_token_decimals);
-    let sell = format_decimals(&response.sell, sell_token_decimals);
+    let executed_buy = format_decimals(&response.executed_buy(), buy_token_decimals);
+    let executed_sell = format_decimals(&response.executed_sell(), sell_token_decimals);
+    let buy = format_decimals(&response.buy(), buy_token_decimals);
+    let sell = format_decimals(&response.sell(), sell_token_decimals);
 
-    let is_sell = response.kind == "sell";
+    let is_sell = response.is_sell();
     let (net_surplus, surplus_percentage) = if is_sell {
         let net = executed_buy.parse::<f64>().unwrap() - buy.parse::<f64>().unwrap();
         let percentage = format_into_four_decimal_point(net / buy.parse::<f64>().unwrap());
