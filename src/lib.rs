@@ -31,6 +31,7 @@ pub struct TradeEvent {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct OrderResponse {
+    owner: String,
     #[serde(rename = "buyToken")]
     buy_token: String,
     #[serde(rename = "sellToken")]
@@ -43,10 +44,6 @@ struct OrderResponse {
     executed_buy: String,
     #[serde(rename = "executedSellAmount")]
     executed_sell: String,
-    #[serde(rename = "buyTokenBalance")]
-    buy_type: String,
-    #[serde(rename = "sellTokenBalance")]
-    sell_type: String,
     kind: String,
 }
 
@@ -78,31 +75,35 @@ pub async fn run() -> eyre::Result<()> {
         let order_response = get_order(&order_uid.to_string()).await?;
         println!("Order Response: {:#?}\n", order_response);
 
-        if order_response.buy_type == "erc20"
-            && order_response.sell_type == "erc20"
-            && order_response.sell_token != constant::WETH
-            && order_response.buy_token != constant::WETH
-        {
-            let erc20 = IERC20::new(
-                order_response.sell_token.parse::<Address>()?,
-                Arc::clone(&provider),
-            );
-            let sell_token_decimals = erc20.decimals().call().await? as u32;
+        let is_sell_weth = order_response.sell_token == constant::WETH;
+        let is_buy_weth = order_response.buy_token == constant::WETH;
 
-            let erc20: IERC20<Provider<Ws>> = IERC20::new(
-                order_response.buy_token.parse::<Address>()?,
-                Arc::clone(&provider),
-            );
-            let buy_token_decimals = erc20.decimals().call().await? as u32;
+        let mut sell_token_decimals = 0;
+        let mut buy_token_decimals = 0;
 
-            let order = compute_surplus(
-                order_uid.to_string(),
-                &order_response,
-                sell_token_decimals,
-                buy_token_decimals,
-            );
-            println!("Order: {:#?}\n", order);
+        let sell_token = order_response.sell_token.parse::<Address>()?;
+        if is_sell_weth {
+            sell_token_decimals = 18;
+        } else {
+            let erc20 = IERC20::new(sell_token, Arc::clone(&provider));
+            sell_token_decimals = erc20.decimals().call().await? as u32;
         }
+
+        let buy_token = order_response.buy_token.parse::<Address>()?;
+        if is_buy_weth {
+            buy_token_decimals = 18;
+        } else {
+            let erc20 = IERC20::new(buy_token, Arc::clone(&provider));
+            buy_token_decimals = erc20.decimals().call().await? as u32;
+        }
+
+        let order = compute_surplus(
+            order_uid.to_string(),
+            &order_response,
+            sell_token_decimals,
+            buy_token_decimals,
+        );
+        println!("Order: {:#?}\n", order);
     }
 
     Ok(())
