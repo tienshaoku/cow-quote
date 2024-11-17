@@ -1,30 +1,22 @@
+use ethers::types::U256;
 use reqwest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
-struct CowQuoteRequest {
-    #[serde(rename = "sellToken")]
+#[serde(rename_all = "camelCase")]
+struct QuoteParam {
     sell_token: String,
-    #[serde(rename = "buyToken")]
     buy_token: String,
     receiver: String,
-    #[serde(rename = "appData")]
     app_data: String,
-    #[serde(rename = "appDataHash")]
     app_data_hash: String,
-    #[serde(rename = "sellTokenBalance")]
     sell_token_balance: String,
-    #[serde(rename = "buyTokenBalance")]
     buy_token_balance: String,
     from: String,
-    #[serde(rename = "priceQuality")]
     price_quality: String,
-    #[serde(rename = "signingScheme")]
     signing_scheme: String,
-    #[serde(rename = "onchainOrder")]
     onchain_order: bool,
     kind: String,
-    #[serde(rename = "sellAmountBeforeFee")]
     sell_amount_before_fee: String,
 }
 
@@ -41,11 +33,13 @@ struct Quote {
     sell: String,
     #[serde(rename = "buyAmount")]
     buy: String,
+    #[serde(rename = "feeAmount")]
+    fee: String,
     #[serde(skip)]
     _others: (),
 }
 
-pub async fn post_cowswap_quote(
+pub async fn cowswap_post_quote(
     owner: &str,
     sell_token: &str,
     buy_token: &str,
@@ -54,7 +48,7 @@ pub async fn post_cowswap_quote(
     let client = reqwest::Client::new();
     let url = "https://api.cow.fi/mainnet/api/v1/quote";
 
-    let quote_request = CowQuoteRequest {
+    let quote_param = QuoteParam {
         sell_token: sell_token.to_string(),
         buy_token: buy_token.to_string(),
         receiver: owner.to_string(),
@@ -73,12 +67,17 @@ pub async fn post_cowswap_quote(
 
     let response: CowQuoteResponse = client
         .post(url)
-        .json(&quote_request)
+        .json(&quote_param)
         .send()
         .await?
         .json()
         .await?;
 
-    assert_eq!(response.quote.sell, sell);
+    // response.quote.sell & sell aren't always the same because of fees
+    let original_sell = U256::from_dec_str(sell).unwrap();
+    let sell = U256::from_dec_str(&response.quote.sell).unwrap();
+    let fee = U256::from_dec_str(&response.quote.fee).unwrap();
+    assert!(sell == original_sell || sell + fee == original_sell);
+
     Ok(response.quote.buy)
 }

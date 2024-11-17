@@ -1,15 +1,16 @@
 use crate::secret;
 use reqwest::header::{HeaderMap, HeaderValue};
+use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, serde::Serialize)]
-pub struct ZeroXResponse {
+#[derive(Debug, Deserialize)]
+pub struct ZeroXGetResponse {
     pub buy: String,
     pub min_buy: String,
     pub sources: Vec<String>,
 }
 
-impl ZeroXResponse {
+impl ZeroXGetResponse {
     pub fn buy(&self) -> &str {
         &self.buy
     }
@@ -42,16 +43,16 @@ pub async fn get_zerox_price_quote(
     chain_id: &str,
     sell_token: &str,
     buy_token: &str,
-    sell_amount: &str,
+    sell: &str,
     taker_address: &str,
-) -> Result<ZeroXResponse, reqwest::Error> {
+) -> Result<ZeroXGetResponse, reqwest::Error> {
     let client = reqwest::Client::new();
 
     let params = HashMap::from([
         ("chainId", chain_id),
         ("sellToken", sell_token),
         ("buyToken", buy_token),
-        ("sellAmount", sell_amount),
+        ("sellAmount", sell),
         ("takerAddress", taker_address),
     ]);
 
@@ -80,14 +81,14 @@ pub async fn get_zerox_price_quote(
         .filter_map(|fill: &serde_json::Value| fill["source"].as_str().map(String::from))
         .collect();
 
-    let mut response = ZeroXResponse {
+    let mut response = ZeroXGetResponse {
         buy: extract_string_from_value(&response, "buyAmount"),
         min_buy: extract_string_from_value(&response, "minBuyAmount"),
         sources,
     };
 
     if response.is_empty() {
-        response = ZeroXResponse::from_empty();
+        response = ZeroXGetResponse::from_empty();
     }
 
     Ok(response)

@@ -16,9 +16,9 @@ use futures::StreamExt;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
-    cow_get_order_api::{get_cowswap_order, CowAPIResponse},
-    cow_post_quote_api::post_cowswap_quote,
-    zerox_api::get_zerox_price_quote,
+    cow_get_order_api::{cowswap_get_order, CowGetResponse},
+    cow_post_quote_api::cowswap_post_quote,
+    zerox_get_quote_api::get_zerox_price_quote,
 };
 use std::sync::Arc;
 
@@ -50,7 +50,7 @@ pub async fn run() -> eyre::Result<()> {
         // println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
 
-        let cow_api_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
+        let cow_api_response: CowGetResponse = cowswap_get_order(&order_uid.to_string()).await?;
         // println!("Order Response: {:#?}\n", cow_api_response);
 
         // 0x has only sell orders
@@ -83,7 +83,7 @@ pub async fn run() -> eyre::Result<()> {
 
             order.update_zerox_comparison(zerox_response);
 
-            let cows_own_quote_buy = post_cowswap_quote(
+            let cows_own_quote_buy = cowswap_post_quote(
                 cow_api_response.owner(),
                 cow_api_response.sell_token(),
                 cow_api_response.buy_token(),

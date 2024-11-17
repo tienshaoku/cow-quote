@@ -2,11 +2,10 @@ use reqwest;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct CowAPIResponse {
+#[serde(rename_all = "camelCase")]
+pub struct CowGetResponse {
     owner: String,
-    #[serde(rename = "buyToken")]
     buy_token: String,
-    #[serde(rename = "sellToken")]
     sell_token: String,
     #[serde(rename = "buyAmount")]
     buy: String,
@@ -19,7 +18,7 @@ pub struct CowAPIResponse {
     kind: String,
 }
 
-impl CowAPIResponse {
+impl CowGetResponse {
     pub fn owner(&self) -> &str {
         &self.owner
     }
@@ -53,8 +52,8 @@ impl CowAPIResponse {
     }
 }
 
-pub async fn get_cowswap_order(order_uid: &str) -> Result<CowAPIResponse, reqwest::Error> {
+pub async fn cowswap_get_order(order_uid: &str) -> Result<CowGetResponse, reqwest::Error> {
     let url: String = format!("https://api.cow.fi/mainnet/api/v1/orders/{}", order_uid);
-    let response = reqwest::get(&url).await?.json::<CowAPIResponse>().await?;
+    let response = reqwest::get(&url).await?.json::<CowGetResponse>().await?;
     Ok(response)
 }
