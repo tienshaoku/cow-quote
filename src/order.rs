@@ -1,7 +1,8 @@
 use crate::constant;
-use crate::format::{format_decimals, format_into_four_decimal_point};
+use crate::format::{format_decimal_point, format_decimals, format_four_decimal_point};
 use crate::ierc20::get_token_decimals;
 use crate::services::cow_api::CowAPIResponse;
+use crate::services::zerox_api::ZeroXResponse;
 
 use ethers::{
     providers::{Provider, Ws},
@@ -27,6 +28,13 @@ pub struct Order {
 
     net_surplus: String,
     surplus_percentage: String,
+
+    zerox_executed_buy: String,
+    zerox_buy: String,
+    zerox_sources: Vec<String>,
+    compared_executed_buy: String,
+    compared_buy: String,
+    compared_executed_buy_percentage: String,
 
     block_number: u64,
     timestamp: u64,
@@ -59,15 +67,8 @@ impl Order {
         let mut net_surplus: f64 = 0.0;
         let mut surplus_percentage: String;
 
-        if response.is_sell() {
-            net_surplus = executed_buy.parse::<f64>().unwrap() - buy.parse::<f64>().unwrap();
-            surplus_percentage =
-                format_into_four_decimal_point(net_surplus / buy.parse::<f64>().unwrap());
-        } else {
-            net_surplus = sell.parse::<f64>().unwrap() - executed_sell.parse::<f64>().unwrap();
-            surplus_percentage =
-                format_into_four_decimal_point(net_surplus / sell.parse::<f64>().unwrap());
-        }
+        net_surplus = executed_buy.parse::<f64>().unwrap() - buy.parse::<f64>().unwrap();
+        surplus_percentage = format_four_decimal_point(net_surplus / buy.parse::<f64>().unwrap());
 
         Ok(Order {
             uid,
@@ -80,11 +81,35 @@ impl Order {
             sell,
             executed_buy,
             executed_sell,
-            net_surplus: format_into_four_decimal_point(net_surplus),
+            net_surplus: format_decimal_point(net_surplus, buy_decimals),
             surplus_percentage,
             block_number,
             timestamp,
+            zerox_executed_buy: "".to_string(),
+            zerox_buy: "".to_string(),
+            zerox_sources: vec![],
+            compared_executed_buy: "".to_string(),
+            compared_buy: "".to_string(),
+            compared_executed_buy_percentage: "".to_string(),
         })
+    }
+
+    pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
+        let decimals: u8 = self.buy_decimals;
+        let zerox_executed_buy = format_decimals(response.buy(), decimals);
+        let zerox_buy = format_decimals(response.min_buy(), decimals);
+
+        let compared_executed_buy =
+            compare_with_zerox(&self.executed_buy, &zerox_executed_buy, decimals);
+
+        self.zerox_executed_buy = zerox_executed_buy;
+        self.zerox_buy = zerox_buy.clone();
+        self.zerox_sources = response.sources().to_vec();
+        self.compared_executed_buy = compared_executed_buy.clone();
+        self.compared_buy = compare_with_zerox(&self.buy, &zerox_buy, decimals);
+        self.compared_executed_buy_percentage = format_four_decimal_point(
+            &compared_executed_buy.parse::<f64>().unwrap() / self.buy.parse::<f64>().unwrap(),
+        );
     }
 }
 
@@ -102,4 +127,11 @@ async fn process_order_info(
     let executed = format_decimals(executed_amount, decimals);
 
     Ok((decimals, planned, executed))
+}
+
+fn compare_with_zerox(cow: &str, zerox: &str, decimals: u8) -> String {
+    format_decimal_point(
+        cow.parse::<f64>().unwrap() - zerox.parse::<f64>().unwrap(),
+        decimals,
+    )
 }

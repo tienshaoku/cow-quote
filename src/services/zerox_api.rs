@@ -4,9 +4,23 @@ use std::collections::HashMap;
 
 #[derive(Debug, serde::Serialize)]
 pub struct ZeroXResponse {
-    pub buy_amount: String,
-    pub min_buy_amount: String,
+    pub buy: String,
+    pub min_buy: String,
     pub sources: Vec<String>,
+}
+
+impl ZeroXResponse {
+    pub fn buy(&self) -> &str {
+        &self.buy
+    }
+
+    pub fn min_buy(&self) -> &str {
+        &self.min_buy
+    }
+
+    pub fn sources(&self) -> &Vec<String> {
+        &self.sources
+    }
 }
 
 pub async fn get_zerox_price_quote(
@@ -51,9 +65,10 @@ pub async fn get_zerox_price_quote(
         .filter_map(|fill: &serde_json::Value| fill["source"].as_str().map(String::from))
         .collect();
 
+    // TODO: handle if response is empty
     Ok(ZeroXResponse {
-        buy_amount: extract_string_from_value(&response, "buyAmount"),
-        min_buy_amount: extract_string_from_value(&response, "minBuyAmount"),
+        buy: extract_string_from_value(&response, "buyAmount"),
+        min_buy: extract_string_from_value(&response, "minBuyAmount"),
         sources,
     })
 }

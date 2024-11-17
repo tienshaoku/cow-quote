@@ -32,7 +32,7 @@ pub struct TradeEvent {
     pub order_uid: Bytes,
 }
 
-const TRIAL_COUNT: usize = 1;
+const TRIAL_COUNT: usize = 4;
 
 pub async fn run() -> eyre::Result<()> {
     let provider = Provider::<Ws>::connect(secret::ETH_RPC).await?;
@@ -44,22 +44,22 @@ pub async fn run() -> eyre::Result<()> {
     let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&provider));
     let mut stream = trade_event.stream().await?.with_meta().take(TRIAL_COUNT);
     while let Some(Ok((trade, meta))) = stream.next().await {
-        println!("Trade: {:#?}\n", trade);
-        println!("Meta: {:#?}\n", meta);
+        // println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
 
         let cow_api_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
         println!("Order Response: {:#?}\n", cow_api_response);
 
         // 0x has only sell orders
-        if cow_api_response.is_sell() {
+        if cow_api_response.is_sell() && cow_api_response.sell() == cow_api_response.executed_sell()
+        {
             let timestamp = if let Some(block) = &provider.get_block(meta.block_number).await? {
                 block.timestamp
             } else {
                 U256::zero()
             };
 
-            let order = Order::from_cow_api_response(
+            let mut order = Order::from_cow_api_response(
                 Arc::clone(&provider),
                 order_uid.to_string(),
                 meta.block_number.as_u64(),
@@ -68,9 +68,7 @@ pub async fn run() -> eyre::Result<()> {
             )
             .await?;
 
-            println!("Order: {:#?}\n", order);
-
-            let quote = get_zerox_price_quote(
+            let zerox_response = get_zerox_price_quote(
                 "1",
                 cow_api_response.sell_token(),
                 cow_api_response.buy_token(),
@@ -78,7 +76,10 @@ pub async fn run() -> eyre::Result<()> {
                 cow_api_response.owner(),
             )
             .await?;
-            println!("{:#?}", quote);
+            println!("0x Response: {:#?}\n", zerox_response);
+
+            order.update_zerox_comparison(zerox_response);
+            println!("Order: {:#?}\n", order);
         }
     }
 
