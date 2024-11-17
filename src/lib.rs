@@ -11,12 +11,10 @@ use ethers::{
     providers::{Provider, Ws},
     types::{Address, Bytes, Filter, U256},
 };
-use format::format_decimals;
 use futures::StreamExt;
-use ierc20::get_token_decimals;
 use order::Order;
 use serde::{Deserialize, Serialize};
-use services::cow_api::*;
+use services::cow_api::{get_cowswap_order, CowAPIResponse};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
@@ -45,32 +43,15 @@ pub async fn run() -> eyre::Result<()> {
         println!("Trade: {:#?}\n", trade);
         let order_uid = trade.order_uid;
 
-        let order_response: OrderResponse = get_cowswap_order(&order_uid.to_string()).await?;
+        let order_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
         println!("Order Response: {:#?}\n", order_response);
 
-        let is_sell_weth = order_response.sell_token() == constant::WETH;
-        let sell_token = order_response.sell_token().parse::<Address>()?;
-        let sell_token_decimals =
-            get_token_decimals(Arc::clone(&provider), sell_token, is_sell_weth).await?;
-
-        let is_buy_weth = order_response.buy_token() == constant::WETH;
-        let buy_token = order_response.buy_token().parse::<Address>()?;
-        let buy_token_decimals =
-            get_token_decimals(Arc::clone(&provider), buy_token, is_buy_weth).await?;
-
-        let executed_buy = format_decimals(&order_response.executed_buy(), buy_token_decimals);
-        let executed_sell = format_decimals(&order_response.executed_sell(), sell_token_decimals);
-        let buy = format_decimals(&order_response.buy(), buy_token_decimals);
-        let sell = format_decimals(&order_response.sell(), sell_token_decimals);
-
-        let mut order = Order::from(order_uid.to_string(), order_response.is_sell());
-        order.update_surplus(
-            &executed_buy,
-            &executed_sell,
-            &buy,
-            &sell,
-            order_response.is_sell(),
-        );
+        let order = Order::from_cow_api_response(
+            Arc::clone(&provider),
+            order_uid.to_string(),
+            &order_response,
+        )
+        .await?;
 
         println!("Order: {:#?}\n", order);
     }
