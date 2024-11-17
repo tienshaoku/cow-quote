@@ -13,7 +13,6 @@ use std::sync::Arc;
 pub struct Order {
     uid: String,
     owner: Address,
-    is_sell: bool,
     buy_token: Address,
     sell_token: Address,
     buy_decimals: u32,
@@ -64,7 +63,6 @@ impl Order {
         Ok(Order {
             uid,
             owner: response.owner().parse::<Address>()?,
-            is_sell: response.is_sell(),
             buy_token,
             sell_token,
             buy_decimals,

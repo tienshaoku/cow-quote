@@ -3,7 +3,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use std::collections::HashMap;
 
 #[derive(Debug, serde::Serialize)]
-pub struct ZeroxResponse {
+pub struct ZeroXResponse {
     pub buy_amount: String,
     pub min_buy_amount: String,
     pub sources: Vec<String>,
@@ -15,7 +15,7 @@ pub async fn get_zerox_price_quote(
     buy_token: &str,
     sell_amount: &str,
     taker_address: &str,
-) -> Result<ZeroxResponse, reqwest::Error> {
+) -> Result<ZeroXResponse, reqwest::Error> {
     let client = reqwest::Client::new();
 
     let params = HashMap::from([
@@ -51,7 +51,7 @@ pub async fn get_zerox_price_quote(
         .filter_map(|fill: &serde_json::Value| fill["source"].as_str().map(String::from))
         .collect();
 
-    Ok(ZeroxResponse {
+    Ok(ZeroXResponse {
         buy_amount: extract_string_from_value(&response, "buyAmount"),
         min_buy_amount: extract_string_from_value(&response, "minBuyAmount"),
         sources,

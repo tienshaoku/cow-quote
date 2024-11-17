@@ -31,6 +31,8 @@ pub struct TradeEvent {
     pub order_uid: Bytes,
 }
 
+const TRIAL_COUNT: usize = 1;
+
 pub async fn run() -> eyre::Result<()> {
     let provider = Provider::<Ws>::connect(secret::ETH_RPC).await?;
     let provider = Arc::new(provider);
@@ -39,32 +41,36 @@ pub async fn run() -> eyre::Result<()> {
     let trade_filter = Filter::new().address(settlement_contract);
 
     let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&provider));
-    let mut stream = trade_event.stream().await?.with_meta().take(1);
+    let mut stream = trade_event.stream().await?.with_meta().take(TRIAL_COUNT);
     while let Some(Ok((trade, meta))) = stream.next().await {
         println!("Trade: {:#?}\n", trade);
+        println!("Meta: {:#?}\n", meta);
         let order_uid = trade.order_uid;
 
-        let order_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
-        println!("Order Response: {:#?}\n", order_response);
+        let cow_api_response: CowAPIResponse = get_cowswap_order(&order_uid.to_string()).await?;
+        println!("Order Response: {:#?}\n", cow_api_response);
 
-        let order = Order::from_cow_api_response(
-            Arc::clone(&provider),
-            order_uid.to_string(),
-            &order_response,
-        )
-        .await?;
+        // 0x has only sell orders
+        if cow_api_response.is_sell() {
+            let order = Order::from_cow_api_response(
+                Arc::clone(&provider),
+                order_uid.to_string(),
+                &cow_api_response,
+            )
+            .await?;
 
-        println!("Order: {:#?}\n", order);
+            println!("Order: {:#?}\n", order);
 
-        let quote = get_zerox_price_quote(
-            "1",
-            order_response.sell_token(),
-            order_response.buy_token(),
-            order_response.sell(),
-            order_response.owner(),
-        )
-        .await?;
-        println!("{:#?}", quote);
+            let quote = get_zerox_price_quote(
+                "1",
+                cow_api_response.sell_token(),
+                cow_api_response.buy_token(),
+                cow_api_response.sell(),
+                cow_api_response.owner(),
+            )
+            .await?;
+            println!("{:#?}", quote);
+        }
     }
 
     Ok(())
