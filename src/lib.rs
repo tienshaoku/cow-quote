@@ -15,8 +15,11 @@ use ethers::{
 use futures::StreamExt;
 use order::Order;
 use serde::{Deserialize, Serialize};
-use services::cow_api::{get_cowswap_order, CowAPIResponse};
-use services::zerox_api::get_zerox_price_quote;
+use services::{
+    cow_get_order_api::{get_cowswap_order, CowAPIResponse},
+    cow_post_quote_api::post_cowswap_quote,
+    zerox_api::get_zerox_price_quote,
+};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
@@ -79,6 +82,16 @@ pub async fn run() -> eyre::Result<()> {
             // println!("0x Response: {:#?}\n", zerox_response);
 
             order.update_zerox_comparison(zerox_response);
+
+            let cows_own_quote_buy = post_cowswap_quote(
+                cow_api_response.owner(),
+                cow_api_response.sell_token(),
+                cow_api_response.buy_token(),
+                cow_api_response.sell(),
+            )
+            .await?;
+
+            order.update_cows_own_quote_comparison(&cows_own_quote_buy);
             println!("Order: {:#?}\n", order);
         }
     }

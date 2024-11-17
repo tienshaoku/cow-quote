@@ -1,17 +1,16 @@
 use crate::constant;
 use crate::format::{format_decimal_point, format_decimals, format_four_decimal_point};
 use crate::ierc20::get_token_decimals;
-use crate::services::cow_api::CowAPIResponse;
-use crate::services::zerox_api::ZeroXResponse;
+use crate::services::{cow_get_order_api::CowAPIResponse, zerox_api::ZeroXResponse};
 
 use ethers::{
     providers::{Provider, Ws},
     types::Address,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Order {
     uid: String,
     owner: String,
@@ -35,6 +34,10 @@ pub struct Order {
     compared_executed_with_zerox_quote: String,
     compared_min_buy: String,
     compared_with_zerox_percentage: String,
+
+    cows_own_quote_buy: String,
+    compared_executed_with_cows_own_quote: String,
+    compared_with_cows_own_quote_percentage: String,
 
     block_number: u64,
     timestamp: u64,
@@ -92,6 +95,9 @@ impl Order {
             compared_executed_with_zerox_quote: "".to_string(),
             compared_min_buy: "".to_string(),
             compared_with_zerox_percentage: "".to_string(),
+            cows_own_quote_buy: "".to_string(),
+            compared_executed_with_cows_own_quote: "".to_string(),
+            compared_with_cows_own_quote_percentage: "".to_string(),
         })
     }
 
@@ -102,14 +108,14 @@ impl Order {
         let zerox_min_buy = format_decimals(response.min_buy(), decimals);
 
         let compared_executed_with_zerox_quote =
-            compare_with_zerox(&self.executed_buy, &zerox_quote_buy, decimals);
+            compare_with_quote(&self.executed_buy, &zerox_quote_buy, decimals);
 
         self.zerox_quote_buy = zerox_quote_buy;
         self.zerox_min_buy = zerox_min_buy.clone();
         self.zerox_sources = response.sources().to_vec();
 
         self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
-        self.compared_min_buy = compare_with_zerox(&self.min_buy, &zerox_min_buy, decimals);
+        self.compared_min_buy = compare_with_quote(&self.min_buy, &zerox_min_buy, decimals);
         self.compared_with_zerox_percentage = if response.is_empty() {
             "1".to_string()
         } else {
@@ -118,6 +124,22 @@ impl Order {
                     / self.min_buy.parse::<f64>().unwrap(),
             )
         };
+    }
+
+    pub fn update_cows_own_quote_comparison(&mut self, quote_buy: &str) {
+        self.cows_own_quote_buy = format_decimals(quote_buy, self.buy_decimals);
+        self.compared_executed_with_cows_own_quote = compare_with_quote(
+            &self.executed_buy,
+            &self.cows_own_quote_buy,
+            self.buy_decimals,
+        );
+        self.compared_with_cows_own_quote_percentage = format_four_decimal_point(
+            &self
+                .compared_executed_with_cows_own_quote
+                .parse::<f64>()
+                .unwrap()
+                / self.min_buy.parse::<f64>().unwrap(),
+        );
     }
 }
 
@@ -137,9 +159,9 @@ async fn process_order_info(
     Ok((decimals, planned, executed))
 }
 
-fn compare_with_zerox(cow: &str, zerox: &str, decimals: u8) -> String {
+fn compare_with_quote(executed: &str, quote: &str, decimals: u8) -> String {
     format_decimal_point(
-        cow.parse::<f64>().unwrap() - zerox.parse::<f64>().unwrap(),
+        executed.parse::<f64>().unwrap() - quote.parse::<f64>().unwrap(),
         decimals,
     )
 }

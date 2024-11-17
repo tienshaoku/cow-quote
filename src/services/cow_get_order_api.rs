@@ -1,7 +1,7 @@
 use reqwest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CowAPIResponse {
     owner: String,
     #[serde(rename = "buyToken")]
