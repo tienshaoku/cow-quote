@@ -1,5 +1,4 @@
-use cow_vs_uni as cvu;
-use cvu::run;
+use cow_quote::run;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
