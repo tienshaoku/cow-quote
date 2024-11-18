@@ -21,7 +21,7 @@ struct QuoteParam {
 }
 
 #[derive(Debug, Deserialize)]
-struct CowQuoteResponse {
+struct CowPostResponse {
     quote: Quote,
     #[serde(skip)]
     _others: (),
@@ -39,7 +39,7 @@ struct Quote {
     _others: (),
 }
 
-pub async fn cowswap_post_quote(
+pub async fn cowswap_quote_buy(
     owner: &str,
     sell_token: &str,
     buy_token: &str,
@@ -65,7 +65,7 @@ pub async fn cowswap_post_quote(
         sell_amount_before_fee: sell.to_string(),
     };
 
-    let response: CowQuoteResponse = client
+    let response: CowPostResponse = client
         .post(url)
         .json(&quote_param)
         .send()

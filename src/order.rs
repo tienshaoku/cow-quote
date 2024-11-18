@@ -1,7 +1,7 @@
 use crate::constant;
 use crate::format::{format_decimal_point, format_decimals, format_four_decimal_point};
 use crate::ierc20::get_token_decimals;
-use crate::services::{cow_get_order_api::CowGetResponse, zerox_get_quote_api::ZeroXGetResponse};
+use crate::services::{cow_get_order_api::CowGetResponse, zerox_get_quote_api::ZeroXResponse};
 
 use ethers::{
     providers::{Provider, Ws},
@@ -101,7 +101,7 @@ impl Order {
         })
     }
 
-    pub fn update_zerox_comparison(&mut self, response: ZeroXGetResponse) {
+    pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
         let decimals: u8 = self.buy_decimals;
 
         let zerox_quote_buy = format_decimals(response.buy(), decimals);

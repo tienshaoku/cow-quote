@@ -17,8 +17,8 @@ use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
     cow_get_order_api::{cowswap_get_order, CowGetResponse},
-    cow_post_quote_api::cowswap_post_quote,
-    zerox_get_quote_api::get_zerox_price_quote,
+    cow_post_quote_api::cowswap_quote_buy,
+    zerox_get_quote_api::zerox_get_quote,
 };
 use std::sync::Arc;
 
@@ -71,7 +71,7 @@ pub async fn run() -> eyre::Result<()> {
             )
             .await?;
 
-            let zerox_response = get_zerox_price_quote(
+            let zerox_response = zerox_get_quote(
                 "1",
                 cow_api_response.sell_token(),
                 cow_api_response.buy_token(),
@@ -81,9 +81,10 @@ pub async fn run() -> eyre::Result<()> {
             .await?;
             // println!("0x Response: {:#?}\n", zerox_response);
 
+            // TODO: include gas cost on zerox but the calculation is v complicated
             order.update_zerox_comparison(zerox_response);
 
-            let cows_own_quote_buy = cowswap_post_quote(
+            let cows_own_quote_buy = cowswap_quote_buy(
                 cow_api_response.owner(),
                 cow_api_response.sell_token(),
                 cow_api_response.buy_token(),

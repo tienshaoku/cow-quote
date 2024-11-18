@@ -4,13 +4,50 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
-pub struct ZeroXGetResponse {
-    pub buy: String,
-    pub min_buy: String,
-    pub sources: Vec<String>,
+struct ZeroXGetResponse {
+    #[serde(rename = "buyAmount")]
+    buy: String,
+    #[serde(rename = "minBuyAmount")]
+    min_buy: String,
+    #[serde(rename = "totalNetworkFee")]
+    total_network_fee: String,
+    #[serde(rename = "liquidityAvailable")]
+    liquidity_available: bool,
+    route: Route,
+    #[serde(skip)]
+    _others: (),
 }
 
 impl ZeroXGetResponse {
+    pub fn is_invalid(&self) -> bool {
+        !self.liquidity_available
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct Route {
+    fills: Vec<Fill>,
+    #[serde(skip)]
+    _others: (),
+}
+
+#[derive(Debug, Deserialize)]
+struct Fill {
+    source: String,
+    #[serde(skip)]
+    _others: (),
+}
+#[derive(Debug, Deserialize)]
+pub struct ZeroXResponse {
+    pub is_empty: bool,
+    pub buy: String,
+    pub min_buy: String,
+    pub sources: Vec<String>,
+    pub total_network_fee: String,
+    pub liquidity_available: bool,
+}
+
+impl ZeroXResponse {
     pub fn buy(&self) -> &str {
         &self.buy
     }
@@ -24,22 +61,22 @@ impl ZeroXGetResponse {
     }
 
     pub fn is_empty(&self) -> bool {
-        // cast then compare to avoid empty string with many 0 suffixes
-        self.buy.parse::<f64>().unwrap_or(0.0) == 0.0
-            && self.min_buy.parse::<f64>().unwrap_or(0.0) == 0.0
-            && self.sources.is_empty()
+        self.is_empty
     }
 
     fn from_empty() -> Self {
         Self {
+            is_empty: true,
             buy: "0".to_string(),
             min_buy: "0".to_string(),
             sources: vec![],
+            total_network_fee: "0".to_string(),
+            liquidity_available: false,
         }
     }
 }
 
-pub async fn get_zerox_price_quote(
+async fn get_zerox_response(
     chain_id: &str,
     sell_token: &str,
     buy_token: &str,
@@ -47,7 +84,6 @@ pub async fn get_zerox_price_quote(
     taker_address: &str,
 ) -> Result<ZeroXGetResponse, reqwest::Error> {
     let client = reqwest::Client::new();
-
     let params = HashMap::from([
         ("chainId", chain_id),
         ("sellToken", sell_token),
@@ -63,37 +99,45 @@ pub async fn get_zerox_price_quote(
     );
     headers.insert("0x-version", HeaderValue::from_static("v2"));
 
-    let response: serde_json::Value = client
+    client
         .get("https://api.0x.org/swap/permit2/price?")
         .headers(headers)
         .query(&params)
         .send()
         .await?
         .json()
-        .await?;
-    // println!("{:#?}", response);
-
-    // Extract all sources from the fills array
-    let empty_vec = Vec::new();
-    let fills = response["route"]["fills"].as_array().unwrap_or(&empty_vec);
-    let sources: Vec<String> = fills
-        .iter()
-        .filter_map(|fill: &serde_json::Value| fill["source"].as_str().map(String::from))
-        .collect();
-
-    let mut response = ZeroXGetResponse {
-        buy: extract_string_from_value(&response, "buyAmount"),
-        min_buy: extract_string_from_value(&response, "minBuyAmount"),
-        sources,
-    };
-
-    if response.is_empty() {
-        response = ZeroXGetResponse::from_empty();
-    }
-
-    Ok(response)
+        .await
 }
 
-fn extract_string_from_value(value: &serde_json::Value, key: &str) -> String {
-    value[key].as_str().unwrap_or_default().to_string()
+pub async fn zerox_get_quote(
+    chain_id: &str,
+    sell_token: &str,
+    buy_token: &str,
+    sell: &str,
+    taker_address: &str,
+) -> Result<ZeroXResponse, reqwest::Error> {
+    let zerox_response =
+        get_zerox_response(chain_id, sell_token, buy_token, sell, taker_address).await?;
+
+    let sources: Vec<String> = zerox_response
+        .route
+        .fills
+        .iter()
+        .map(|fill| fill.source.clone())
+        .collect();
+
+    let response = if zerox_response.is_invalid() {
+        ZeroXResponse::from_empty()
+    } else {
+        ZeroXResponse {
+            is_empty: false,
+            buy: zerox_response.buy,
+            min_buy: zerox_response.min_buy,
+            sources,
+            total_network_fee: zerox_response.total_network_fee,
+            liquidity_available: zerox_response.liquidity_available,
+        }
+    };
+
+    Ok(response)
 }
