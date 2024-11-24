@@ -1,20 +1,24 @@
 mod constant;
+mod contract;
 mod format;
-mod ierc20;
 mod order;
 #[path = "secret.rs"]
 mod secret;
 pub mod services;
 
+use contract::{
+    ierc20::IERC20,
+    ifactory::IFactory,
+    swap_router::{ExactInputSingleParams, SwapRouter},
+};
 use ethers::{
     contract::EthEvent,
-    core::utils::Anvil,
+    core::utils::{parse_ether, Anvil},
     middleware::Middleware,
     providers::{Http, Provider, Ws},
     types::{Address, Bytes, Filter, U256},
 };
 use futures::StreamExt;
-use ierc20::IERC20;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
@@ -22,7 +26,7 @@ use services::{
     cow_post_quote_api::cowswap_quote_buy,
     zerox_get_quote_api::zerox_get_quote,
 };
-use std::sync::Arc;
+use std::{f64::consts::E, sync::Arc};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
@@ -38,7 +42,6 @@ pub struct TradeEvent {
 }
 
 const TRIAL_COUNT: usize = 4;
-const SWAP_ROUTER: &str = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
 
 pub async fn run() -> eyre::Result<()> {
     let ws_provider = Provider::<Ws>::connect(secret::ETH_RPC).await?;
@@ -61,6 +64,7 @@ pub async fn run() -> eyre::Result<()> {
         if cow_api_response.is_sell() && cow_api_response.sell() == cow_api_response.executed_sell()
         {
             let block_number = meta.block_number.as_u64();
+            println!("Block number: {:?}", block_number);
             let timestamp = if let Some(block) = &ws_provider.get_block(block_number).await? {
                 block.timestamp
             } else {
@@ -71,6 +75,7 @@ pub async fn run() -> eyre::Result<()> {
             let sell_token = cow_api_response.sell_token();
             let sell_amount = cow_api_response.sell();
             let buy_token = cow_api_response.buy_token();
+            let buy_amount = cow_api_response.buy();
 
             let mut order = Order::from_cow_api_response(
                 Arc::clone(&ws_provider),
@@ -81,6 +86,7 @@ pub async fn run() -> eyre::Result<()> {
             )
             .await?;
 
+            /*
             let zerox_response =
                 zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await?;
             // println!("0x Response: {:#?}\n", zerox_response);
@@ -92,41 +98,116 @@ pub async fn run() -> eyre::Result<()> {
                 cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await?;
 
             order.update_cows_own_quote_comparison(&cows_own_quote_buy);
+             */
             println!("Order: {:#?}\n", order);
 
+            let forked_block_number = block_number - 1;
             let anvil = Anvil::new()
                 .fork(secret::ETH_RPC)
-                .fork_block_number(block_number)
+                .chain_id(1_u64)
+                .fork_block_number(forked_block_number)
                 .spawn();
 
-            let http_provider = Provider::<Http>::try_from(anvil.endpoint())?;
+            let http_provider = Provider::<Http>::try_from(anvil.endpoint())
+                .expect("Failed to create HTTP provider");
             let http_provider = Arc::new(http_provider);
-
-            assert_eq!(
-                http_provider.get_block_number().await?.as_u64(),
-                block_number
-            );
 
             http_provider
                 .request::<_, ()>("anvil_impersonateAccount", vec![owner.to_string()])
-                .await?;
+                .await
+                .expect("Failed to impersonate account");
+
+            http_provider
+                .request::<_, ()>(
+                    "anvil_setBalance",
+                    vec![owner.to_string(), format!("{:#x}", parse_ether(1).unwrap())],
+                )
+                .await
+                .expect("Failed to set balance");
 
             let owner = owner.parse::<Address>()?;
             let signer = (*http_provider).clone().with_sender(owner);
 
-            let erc20 = IERC20::new(sell_token.parse::<Address>()?, signer.into());
+            let sell_token = sell_token.parse::<Address>()?;
+            let buy_token = buy_token.parse::<Address>()?;
 
-            let swap_router = SWAP_ROUTER.parse::<Address>()?;
-            let approval = erc20.allowance(owner, swap_router).await?;
-            println!("Approval before: {:?}", approval);
+            let erc20 = IERC20::new(sell_token, signer.clone().into());
 
-            erc20
-                .approve(swap_router, U256::from_dec_str(sell_amount)?)
-                .send()
-                .await?;
+            let balance = erc20.balance_of(owner).call().await?;
+            let sell_amount = U256::from_dec_str(sell_amount)?;
+            if balance >= sell_amount {
+                println!("Balance: {:?}", balance);
+            } else {
+                println!("Insufficient balance: {} < {}", balance, sell_amount);
+                continue;
+            }
 
-            let approval = erc20.allowance(owner, swap_router).await?;
-            println!("Approval after: {:?}", approval);
+            let swap_router = constant::UNISWAP_V3_ROUTER.parse::<Address>()?;
+
+            let approval_tx = erc20.approve(swap_router, U256::max_value());
+            let _receipt = approval_tx.send().await?.await?;
+            let block_number = http_provider.get_block_number().await?;
+            println!("Block number: {:?}", block_number);
+
+            let approval = erc20.allowance(owner, swap_router).call().await?;
+            if approval >= sell_amount {
+                println!("Approval after: {:?}", approval);
+            } else {
+                println!("Approval failed: {} < {}", approval, sell_amount);
+                continue;
+            }
+
+            let swap_router = SwapRouter::new(swap_router, signer.clone().into());
+            let factory = IFactory::new(
+                constant::UNISWAP_V3_FACTORY.parse::<Address>()?,
+                signer.clone().into(),
+            );
+
+            let fee_tier = [100, 500, 3000, 10000];
+
+            let mut max_amount_out = U256::default();
+            for fee in fee_tier {
+                let pool_address = factory.get_pool(sell_token, buy_token, fee).call().await?;
+                if pool_address != Address::zero() {
+                    println!("Pool address for fee {}: {:?}", fee, pool_address);
+                } else {
+                    println!("No pool exists for fee tier {}", fee);
+                    continue;
+                }
+
+                let amount_out = match tokio::time::timeout(
+                    std::time::Duration::from_secs(20),
+                    swap_router
+                        .exact_input_single(ExactInputSingleParams {
+                            token_in: sell_token,
+                            token_out: buy_token,
+                            fee,
+                            amount_in: sell_amount,
+                            amount_out_minimum: U256::from(0),
+                            recipient: owner,
+                            sqrt_price_limit_x96: U256::from(0),
+                        })
+                        .call(),
+                )
+                .await
+                {
+                    Ok(Ok(amount)) => amount,
+                    Ok(Err(e)) => {
+                        println!("Swap failed for fee tier {}: {:?}", fee, e);
+                        continue;
+                    }
+                    Err(_) => {
+                        println!("Swap timed out for fee tier {}", fee);
+                        continue;
+                    }
+                };
+
+                if amount_out > max_amount_out {
+                    max_amount_out = amount_out;
+                }
+                println!("Amount out: {:?}", amount_out);
+            }
+            println!("Max amount out: {:?}\n", max_amount_out);
 
             drop(anvil);
         }

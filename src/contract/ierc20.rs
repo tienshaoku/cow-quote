@@ -16,6 +16,7 @@ abigen!(
     function balanceOf(address owner) public view returns (uint256)
     function allowance(address owner, address spender) public view returns (uint256)
     function transfer(address recipient, uint256 amount) public returns (bool)
+    function transferFrom(address, address, uint256) public returns (bool)
     ]"#
 );
 
