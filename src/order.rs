@@ -31,8 +31,8 @@ pub struct Order {
     zerox_quote_buy: String,
     zerox_min_buy: String,
     zerox_sources: Vec<String>,
-    compared_executed_with_zerox_quote: String,
     compared_min_buy: String,
+    compared_executed_with_zerox_quote: String,
     compared_with_zerox_percentage: String,
 
     cows_own_quote_buy: String,
@@ -97,6 +97,21 @@ impl Order {
         })
     }
 
+    fn calculate_percentage(&self, is_input_zero: bool, diff: &str) -> String {
+        if is_input_zero {
+            "1".to_string()
+        } else {
+            let denominator = if self.min_buy == "0" {
+                &self.executed_buy
+            } else {
+                &self.min_buy
+            };
+            format_four_decimal_point(
+                diff.parse::<f64>().unwrap() / denominator.parse::<f64>().unwrap(),
+            )
+        }
+    }
+
     pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
         let decimals: u8 = self.buy_decimals;
 
@@ -110,19 +125,14 @@ impl Order {
         self.zerox_min_buy = zerox_min_buy.clone();
         self.zerox_sources = response.sources().to_vec();
 
-        self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
         self.compared_min_buy = compare(&self.min_buy, &zerox_min_buy, decimals);
-        self.compared_with_zerox_percentage = if response.is_empty() {
-            "1".to_string()
-        } else {
-            format_four_decimal_point(
-                &compared_executed_with_zerox_quote.parse::<f64>().unwrap()
-                    / self.min_buy.parse::<f64>().unwrap(),
-            )
-        };
+        self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
+        self.compared_with_zerox_percentage = self.calculate_percentage(
+            response.is_empty(),
+            &self.compared_executed_with_zerox_quote,
+        );
     }
 
-    // TODO: handle input = 0
     pub fn update_cows_own_quote_comparison(&mut self, quote_buy: &str) {
         self.cows_own_quote_buy = format_decimals(quote_buy, self.buy_decimals);
         self.compared_executed_with_cows_own_quote = compare(
@@ -130,27 +140,18 @@ impl Order {
             &self.cows_own_quote_buy,
             self.buy_decimals,
         );
-        self.compared_with_cows_own_quote_percentage = format_four_decimal_point(
-            &self
-                .compared_executed_with_cows_own_quote
-                .parse::<f64>()
-                .unwrap()
-                / self.min_buy.parse::<f64>().unwrap(),
+        self.compared_with_cows_own_quote_percentage = self.calculate_percentage(
+            quote_buy == "0",
+            &self.compared_executed_with_cows_own_quote,
         );
     }
 
-    // TODO: handle input = 0
     pub fn update_univ3_swap_comparison(&mut self, quote_buy: &str) {
         self.univ3_swap_buy = format_decimals(quote_buy, self.buy_decimals);
         self.compared_executed_with_univ3_swap =
             compare(&self.executed_buy, &self.univ3_swap_buy, self.buy_decimals);
-        self.compared_with_univ3_swap_percentage = format_four_decimal_point(
-            &self
-                .compared_executed_with_univ3_swap
-                .parse::<f64>()
-                .unwrap()
-                / self.min_buy.parse::<f64>().unwrap(),
-        );
+        self.compared_with_univ3_swap_percentage =
+            self.calculate_percentage(quote_buy == "0", &self.compared_executed_with_univ3_swap);
     }
 }
 
