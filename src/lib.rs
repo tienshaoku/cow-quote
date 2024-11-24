@@ -26,7 +26,9 @@ use services::{
     cow_post_quote_api::cowswap_quote_buy,
     zerox_get_quote_api::zerox_get_quote,
 };
-use std::{f64::consts::E, sync::Arc};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::timeout;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
@@ -44,7 +46,7 @@ pub struct TradeEvent {
 const TRIAL_COUNT: usize = 4;
 
 pub async fn run() -> eyre::Result<()> {
-    let ws_provider = Provider::<Ws>::connect(secret::ETH_RPC).await?;
+    let ws_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
     let ws_provider = Arc::new(ws_provider);
 
     let settlement_contract = constant::GPv2SETTLEMENT.parse::<Address>()?;
@@ -75,7 +77,6 @@ pub async fn run() -> eyre::Result<()> {
             let sell_token = cow_api_response.sell_token();
             let sell_amount = cow_api_response.sell();
             let buy_token = cow_api_response.buy_token();
-            let buy_amount = cow_api_response.buy();
 
             let mut order = Order::from_cow_api_response(
                 Arc::clone(&ws_provider),
@@ -86,7 +87,6 @@ pub async fn run() -> eyre::Result<()> {
             )
             .await?;
 
-            /*
             let zerox_response =
                 zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await?;
             // println!("0x Response: {:#?}\n", zerox_response);
@@ -98,12 +98,10 @@ pub async fn run() -> eyre::Result<()> {
                 cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await?;
 
             order.update_cows_own_quote_comparison(&cows_own_quote_buy);
-             */
-            println!("Order: {:#?}\n", order);
 
             let forked_block_number = block_number - 1;
             let anvil = Anvil::new()
-                .fork(secret::ETH_RPC)
+                .fork(secret::HTTP_ETH_RPC)
                 .chain_id(1_u64)
                 .fork_block_number(forked_block_number)
                 .spawn();
@@ -120,7 +118,7 @@ pub async fn run() -> eyre::Result<()> {
             http_provider
                 .request::<_, ()>(
                     "anvil_setBalance",
-                    vec![owner.to_string(), format!("{:#x}", parse_ether(1).unwrap())],
+                    vec![owner.to_string(), parse_ether(100).unwrap().to_string()],
                 )
                 .await
                 .expect("Failed to set balance");
@@ -135,9 +133,7 @@ pub async fn run() -> eyre::Result<()> {
 
             let balance = erc20.balance_of(owner).call().await?;
             let sell_amount = U256::from_dec_str(sell_amount)?;
-            if balance >= sell_amount {
-                println!("Balance: {:?}", balance);
-            } else {
+            if balance < sell_amount {
                 println!("Insufficient balance: {} < {}", balance, sell_amount);
                 continue;
             }
@@ -146,13 +142,9 @@ pub async fn run() -> eyre::Result<()> {
 
             let approval_tx = erc20.approve(swap_router, U256::max_value());
             let _receipt = approval_tx.send().await?.await?;
-            let block_number = http_provider.get_block_number().await?;
-            println!("Block number: {:?}", block_number);
 
             let approval = erc20.allowance(owner, swap_router).call().await?;
-            if approval >= sell_amount {
-                println!("Approval after: {:?}", approval);
-            } else {
+            if approval < sell_amount {
                 println!("Approval failed: {} < {}", approval, sell_amount);
                 continue;
             }
@@ -175,39 +167,46 @@ pub async fn run() -> eyre::Result<()> {
                     continue;
                 }
 
-                let amount_out = match tokio::time::timeout(
-                    std::time::Duration::from_secs(20),
-                    swap_router
-                        .exact_input_single(ExactInputSingleParams {
-                            token_in: sell_token,
-                            token_out: buy_token,
-                            fee,
-                            amount_in: sell_amount,
-                            amount_out_minimum: U256::from(0),
-                            recipient: owner,
-                            sqrt_price_limit_x96: U256::from(0),
-                        })
-                        .call(),
-                )
-                .await
-                {
-                    Ok(Ok(amount)) => amount,
+                let erc20 = IERC20::new(buy_token, signer.clone().into());
+                let balance_before = erc20.balance_of(owner).call().await?;
+
+                let tx = swap_router.exact_input_single(ExactInputSingleParams {
+                    token_in: sell_token,
+                    token_out: buy_token,
+                    fee,
+                    amount_in: sell_amount,
+                    amount_out_minimum: U256::from(0),
+                    recipient: owner,
+                    sqrt_price_limit_x96: U256::from(0),
+                });
+
+                let pending_tx = match timeout(Duration::from_secs(30), tx.send()).await {
+                    Ok(Ok(tx)) => tx,
                     Ok(Err(e)) => {
-                        println!("Swap failed for fee tier {}: {:?}", fee, e);
+                        println!("Failed to send transaction: {:?}", e);
                         continue;
                     }
                     Err(_) => {
-                        println!("Swap timed out for fee tier {}", fee);
+                        println!("Transaction submission timed out");
                         continue;
                     }
                 };
 
+                if timeout(Duration::from_secs(30), pending_tx).await.is_err() {
+                    println!("Transaction confirmation timed out");
+                    continue;
+                }
+
+                let balance_after = erc20.balance_of(owner).call().await?;
+                let amount_out = balance_after - balance_before;
                 if amount_out > max_amount_out {
                     max_amount_out = amount_out;
                 }
-                println!("Amount out: {:?}", amount_out);
             }
             println!("Max amount out: {:?}\n", max_amount_out);
+            order.update_univ3_swap_comparison(&max_amount_out.to_string());
+
+            println!("Order: {:#?}\n", order);
 
             drop(anvil);
         }
