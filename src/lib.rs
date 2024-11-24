@@ -46,13 +46,13 @@ pub struct TradeEvent {
 const TRIAL_COUNT: usize = 4;
 
 pub async fn run() -> eyre::Result<()> {
-    let ws_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
-    let ws_provider = Arc::new(ws_provider);
+    let wss_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
+    let wss_provider = Arc::new(wss_provider);
 
     let settlement_contract = constant::GPv2SETTLEMENT.parse::<Address>()?;
     let trade_filter = Filter::new().address(settlement_contract);
 
-    let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&ws_provider));
+    let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&wss_provider));
     let mut stream = trade_event.stream().await?.with_meta().take(TRIAL_COUNT);
     while let Some(Ok((trade, meta))) = stream.next().await {
         // println!("Trade: {:#?}\n", trade);
@@ -66,11 +66,11 @@ pub async fn run() -> eyre::Result<()> {
         if cow_api_response.is_sell() && cow_api_response.sell() == cow_api_response.executed_sell()
         {
             let block_number = meta.block_number.as_u64();
-            println!("Block number: {:?}", block_number);
-            let timestamp = if let Some(block) = &ws_provider.get_block(block_number).await? {
-                block.timestamp
-            } else {
-                continue;
+            println!("New settlement found at block number: {:?}", block_number);
+
+            let timestamp = match wss_provider.get_block(block_number).await? {
+                Some(block) => block.timestamp,
+                None => continue,
             };
 
             let owner = cow_api_response.owner();
@@ -79,7 +79,7 @@ pub async fn run() -> eyre::Result<()> {
             let buy_token = cow_api_response.buy_token();
 
             let mut order = Order::from_cow_api_response(
-                Arc::clone(&ws_provider),
+                Arc::clone(&wss_provider),
                 order_uid.to_string(),
                 block_number,
                 timestamp.as_u64(),
@@ -89,14 +89,12 @@ pub async fn run() -> eyre::Result<()> {
 
             let zerox_response =
                 zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await?;
-            // println!("0x Response: {:#?}\n", zerox_response);
 
-            // TODO: include gas cost on zerox but the calculation is v complicated
+            // TODO: include gas cost; complicated calculation
             order.update_zerox_comparison(zerox_response);
 
             let cows_own_quote_buy =
                 cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await?;
-
             order.update_cows_own_quote_comparison(&cows_own_quote_buy);
 
             let forked_block_number = block_number - 1;
@@ -155,15 +153,12 @@ pub async fn run() -> eyre::Result<()> {
                 signer.clone().into(),
             );
 
-            let fee_tier = [100, 500, 3000, 10000];
+            let fee_tiers = [100, 500, 3000, 10000];
 
             let mut max_amount_out = U256::default();
-            for fee in fee_tier {
+            for fee in fee_tiers {
                 let pool_address = factory.get_pool(sell_token, buy_token, fee).call().await?;
-                if pool_address != Address::zero() {
-                    println!("Pool address for fee {}: {:?}", fee, pool_address);
-                } else {
-                    println!("No pool exists for fee tier {}", fee);
+                if pool_address == Address::zero() {
                     continue;
                 }
 
@@ -180,10 +175,12 @@ pub async fn run() -> eyre::Result<()> {
                     sqrt_price_limit_x96: U256::from(0),
                 });
 
-                let pending_tx = match timeout(Duration::from_secs(30), tx.send()).await {
+                let time_out = Duration::from_secs(8);
+                // average time: 3 - 8 secs
+                let pending_tx = match timeout(time_out, tx.send()).await {
                     Ok(Ok(tx)) => tx,
                     Ok(Err(e)) => {
-                        println!("Failed to send transaction: {:?}", e);
+                        println!("Failed to send transaction: {}", e);
                         continue;
                     }
                     Err(_) => {
@@ -192,8 +189,8 @@ pub async fn run() -> eyre::Result<()> {
                     }
                 };
 
-                if timeout(Duration::from_secs(30), pending_tx).await.is_err() {
-                    println!("Transaction confirmation timed out");
+                // average time: 7 secs
+                if timeout(time_out, pending_tx).await.is_err() {
                     continue;
                 }
 
@@ -203,9 +200,8 @@ pub async fn run() -> eyre::Result<()> {
                     max_amount_out = amount_out;
                 }
             }
-            println!("Max amount out: {:?}\n", max_amount_out);
+            // TODO: include gas cost; complicated calculation
             order.update_univ3_swap_comparison(&max_amount_out.to_string());
-
             println!("Order: {:#?}\n", order);
 
             drop(anvil);
