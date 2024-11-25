@@ -50,12 +50,10 @@ pub async fn run() -> eyre::Result<()> {
     while let Some(Ok((trade, meta))) = stream.next().await {
         let order_uid = trade.order_uid;
 
-        let cow_api_response: CowGetResponse = cowswap_get_order(&order_uid.to_string()).await?;
+        let (cow_api_response, should_proceed) = cowswap_get_order(&order_uid.to_string()).await?;
 
         // TODO: see if can throw this into a thread
-        // 0x has only sell orders
-        if cow_api_response.is_sell() && cow_api_response.sell() == cow_api_response.executed_sell()
-        {
+        if should_proceed {
             let block_number = meta.block_number.as_u64();
             println!("New settlement found at block number: {:?}", block_number);
 

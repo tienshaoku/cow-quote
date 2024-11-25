@@ -52,8 +52,12 @@ impl CowGetResponse {
     }
 }
 
-pub async fn cowswap_get_order(order_uid: &str) -> Result<CowGetResponse, reqwest::Error> {
+pub async fn cowswap_get_order(order_uid: &str) -> Result<(CowGetResponse, bool), reqwest::Error> {
     let url: String = format!("https://api.cow.fi/mainnet/api/v1/orders/{}", order_uid);
     let response = reqwest::get(&url).await?.json::<CowGetResponse>().await?;
-    Ok(response)
+
+    // 1. 0x has only sell orders
+    // 2. exclude partial fills for now
+    let should_proceed = response.is_sell() && response.sell() == response.executed_sell();
+    Ok((response, should_proceed))
 }
