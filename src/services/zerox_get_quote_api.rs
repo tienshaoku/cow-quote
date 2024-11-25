@@ -1,4 +1,5 @@
 use crate::secret;
+use getset::Getters;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -37,7 +38,8 @@ struct Fill {
     #[serde(skip)]
     _others: (),
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct ZeroXResponse {
     pub is_empty: bool,
     pub buy: String,
@@ -48,22 +50,6 @@ pub struct ZeroXResponse {
 }
 
 impl ZeroXResponse {
-    pub fn buy(&self) -> &str {
-        &self.buy
-    }
-
-    pub fn min_buy(&self) -> &str {
-        &self.min_buy
-    }
-
-    pub fn sources(&self) -> &Vec<String> {
-        &self.sources
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.is_empty
-    }
-
     fn from_empty() -> Self {
         Self {
             is_empty: true,

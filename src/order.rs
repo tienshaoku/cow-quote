@@ -2,6 +2,7 @@ use crate::constant;
 use crate::contract::ierc20::get_token_decimals;
 use crate::format::{format_decimal_point, format_decimals, format_four_decimal_point};
 use crate::services::{cow_get_order_api::CowGetResponse, zerox_get_quote_api::ZeroXResponse};
+use getset::Getters;
 
 use ethers::{
     providers::{Provider, Ws},
@@ -10,7 +11,8 @@ use ethers::{
 use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Debug, Serialize, Clone, Default)]
+#[derive(Debug, Serialize, Clone, Default, Getters)]
+#[getset(get = "pub")]
 pub struct Order {
     uid: String,
     owner: String,
@@ -128,7 +130,7 @@ impl Order {
         self.compared_min_buy = compare(&self.min_buy, &zerox_min_buy, decimals);
         self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
         self.compared_with_zerox_percentage = self.calculate_percentage(
-            response.is_empty(),
+            *response.is_empty(),
             &self.compared_executed_with_zerox_quote,
         );
     }

@@ -16,10 +16,8 @@ use futures::StreamExt;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
-    cow_get_order_api::{cowswap_get_order, CowGetResponse},
-    cow_post_quote_api::cowswap_quote_buy,
-    uni_fork_swap::uni_swap_buy,
-    zerox_get_quote_api::zerox_get_quote,
+    aws::AwsClient, cow_get_order_api::cowswap_get_order, cow_post_quote_api::cowswap_quote_buy,
+    uni_fork_swap::uni_swap_buy, zerox_get_quote_api::zerox_get_quote,
 };
 use std::sync::Arc;
 
@@ -36,17 +34,17 @@ pub struct TradeEvent {
     pub order_uid: Bytes,
 }
 
-const TRIAL_COUNT: usize = 4;
-
 pub async fn run() -> eyre::Result<()> {
     let wss_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
     let wss_provider = Arc::new(wss_provider);
+
+    let aws_client = AwsClient::new().await?;
 
     let settlement_contract = constant::GPv2SETTLEMENT.parse::<Address>()?;
     let trade_filter = Filter::new().address(settlement_contract);
 
     let trade_event = TradeEvent::new::<_, Provider<Ws>>(trade_filter, Arc::clone(&wss_provider));
-    let mut stream = trade_event.stream().await?.with_meta().take(TRIAL_COUNT);
+    let mut stream = trade_event.stream().await?.with_meta();
     while let Some(Ok((trade, meta))) = stream.next().await {
         let order_uid = trade.order_uid;
 
@@ -86,9 +84,15 @@ pub async fn run() -> eyre::Result<()> {
                 cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await?;
             order.update_cows_own_quote_comparison(&cows_own_quote_buy);
 
+            // TODO: include gas cost; complicated calculation
             let uni_swapped_buy =
                 uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await?;
             order.update_univ3_swap_comparison(&uni_swapped_buy);
+
+            if let Err(e) = aws_client.upload_order(&order).await {
+                eprintln!("Failed to upload order {}: {}", order.uid(), e);
+                continue;
+            }
 
             println!("Order: {:#?}\n", order);
         }

@@ -1,8 +1,10 @@
+use getset::Getters;
 use reqwest;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Getters)]
 #[serde(rename_all = "camelCase")]
+#[getset(get = "pub")]
 pub struct CowGetResponse {
     owner: String,
     buy_token: String,
@@ -19,34 +21,6 @@ pub struct CowGetResponse {
 }
 
 impl CowGetResponse {
-    pub fn owner(&self) -> &str {
-        &self.owner
-    }
-
-    pub fn buy_token(&self) -> &str {
-        &self.buy_token
-    }
-
-    pub fn sell_token(&self) -> &str {
-        &self.sell_token
-    }
-
-    pub fn buy(&self) -> &str {
-        &self.buy
-    }
-
-    pub fn sell(&self) -> &str {
-        &self.sell
-    }
-
-    pub fn executed_buy(&self) -> &str {
-        &self.executed_buy
-    }
-
-    pub fn executed_sell(&self) -> &str {
-        &self.executed_sell
-    }
-
     pub fn is_sell(&self) -> bool {
         self.kind == "sell"
     }
