@@ -56,8 +56,8 @@ pub async fn run() -> eyre::Result<()> {
             println!("New settlement found at block number: {:?}", block_number);
 
             let timestamp = match wss_provider.get_block(block_number).await? {
-                Some(block) => block.timestamp,
-                None => continue,
+                Some(block) => block.timestamp.as_u64(),
+                None => 0,
             };
 
             let owner = cow_api_response.owner();
@@ -69,7 +69,7 @@ pub async fn run() -> eyre::Result<()> {
                 Arc::clone(&wss_provider),
                 order_uid.to_string(),
                 block_number,
-                timestamp.as_u64(),
+                timestamp,
                 &cow_api_response,
             )
             .await?;
@@ -85,9 +85,16 @@ pub async fn run() -> eyre::Result<()> {
             order.update_cows_own_quote_comparison(&cows_own_quote_buy);
 
             // TODO: include gas cost; complicated calculation
-            let uni_swapped_buy =
-                uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await?;
-            order.update_univ3_swap_comparison(&uni_swapped_buy);
+
+            match uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await {
+                Ok(swap_result) => order.update_univ3_swap_comparison(&swap_result),
+                Err(e) => {
+                    // TODO: change Order's default value to 0.0 (f64) instead of String s.t.
+                    //       it's okay not to update here when uni_swap_buy() returns Err
+                    order.update_univ3_swap_comparison("0");
+                    eprintln!("Uni fork swap failed: {}", e);
+                }
+            }
 
             if let Err(e) = aws_client.upload_order(&order).await {
                 eprintln!("Failed to upload order {}: {}", order.uid(), e);

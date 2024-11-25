@@ -46,6 +46,7 @@ pub struct Order {
     compared_with_univ3_swap_percentage: String,
 
     block_number: u64,
+    // in unlikely cases where timestamp == 0, data user can query it from block_number
     timestamp: u64,
 }
 

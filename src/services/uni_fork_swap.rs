@@ -45,11 +45,11 @@ pub async fn uni_swap_buy(
         .expect("Failed to set balance");
 
     let owner = owner.parse::<Address>()?;
-    let signer = (*http_provider).clone().with_sender(owner);
     let sell_token = sell_token.parse::<Address>()?;
     let buy_token = buy_token.parse::<Address>()?;
-
+    let signer = (*http_provider).clone().with_sender(owner);
     let erc20 = IERC20::new(sell_token, signer.clone().into());
+
     let balance = erc20.balance_of(owner).call().await?;
     let sell_amount = U256::from_dec_str(sell_amount)?;
     if balance < sell_amount {
@@ -66,11 +66,7 @@ pub async fn uni_swap_buy(
 
     let approval = erc20.allowance(owner, swap_router).call().await?;
     if approval < sell_amount {
-        return Err(eyre::eyre!(
-            "Approval failed: {} < {}",
-            approval,
-            sell_amount
-        ));
+        return Err(eyre::eyre!("Max approval failed"));
     }
 
     let swap_router = SwapRouter::new(swap_router, signer.clone().into());
@@ -79,14 +75,14 @@ pub async fn uni_swap_buy(
         signer.clone().into(),
     );
 
-    let fee_tiers = [100, 500, 3000, 10000];
     let mut max_amount_out = U256::default();
+    let fee_tiers = [100, 500, 3000, 10000];
 
     for fee in fee_tiers {
-        let pool_address = factory.get_pool(sell_token, buy_token, fee).call().await?;
-        if pool_address == Address::zero() {
-            continue;
-        }
+        match factory.get_pool(sell_token, buy_token, fee).call().await {
+            Ok(pool_address) if pool_address != Address::zero() => (),
+            _ => continue,
+        };
 
         let erc20 = IERC20::new(buy_token, signer.clone().into());
         let balance_before = erc20.balance_of(owner).call().await?;
@@ -126,7 +122,11 @@ pub async fn uni_swap_buy(
             max_amount_out = amount_out;
         }
     }
-
     drop(anvil);
-    Ok(max_amount_out.to_string())
+
+    if max_amount_out == U256::default() {
+        Err(eyre::eyre!("No successful swap at all"))
+    } else {
+        Ok(max_amount_out.to_string())
+    }
 }
