@@ -1,7 +1,7 @@
 use crate::constant;
 use crate::contract::ierc20::get_token_decimals;
 use crate::format::format_decimals_into_f;
-use crate::services::{cow_get_order_api::CowGetResponse, zerox_get_quote_api::ZeroXResponse};
+use crate::services::cow_get_order_api::CowGetResponse;
 use getset::Getters;
 
 use ethers::{
@@ -30,12 +30,9 @@ pub struct Order {
     net_surplus: f64,
     surplus_percentage: f64,
 
-    zerox_min_buy: f64,
-    zerox_sources: Vec<String>,
     zerox_quote_buy: f64,
     compared_executed_with_zerox_quote: f64,
     compared_with_zerox_percentage: f64,
-    compared_min_buy: f64,
 
     cows_own_quote_buy: f64,
     compared_executed_with_cows_own_quote: f64,
@@ -113,15 +110,10 @@ impl Order {
         self.executed_buy - input
     }
 
-    pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
-        let decimals: u8 = self.buy_decimals;
-        self.zerox_min_buy = format_decimals_into_f(response.min_buy(), decimals);
-        self.zerox_sources = response.sources().to_vec();
-        self.zerox_quote_buy = format_decimals_into_f(response.buy(), decimals);
-
+    pub fn update_zerox_comparison(&mut self, quote_buy: &str) {
+        self.zerox_quote_buy = format_decimals_into_f(quote_buy, self.buy_decimals);
         self.compared_executed_with_zerox_quote = self.compare(self.zerox_quote_buy);
         self.compared_with_zerox_percentage = self.calculate_percentage(self.zerox_quote_buy);
-        self.compared_min_buy = self.min_buy - self.zerox_min_buy;
     }
 
     pub fn update_cows_own_quote_comparison(&mut self, quote_buy: &str) {

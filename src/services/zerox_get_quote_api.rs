@@ -1,5 +1,4 @@
 use crate::secret;
-use getset::Getters;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,8 +7,6 @@ use std::collections::HashMap;
 struct ZeroXGetResponse {
     #[serde(rename = "buyAmount")]
     buy: String,
-    #[serde(rename = "minBuyAmount")]
-    min_buy: String,
     #[serde(rename = "totalNetworkFee")]
     total_network_fee: String,
     #[serde(rename = "liquidityAvailable")]
@@ -38,37 +35,14 @@ struct Fill {
     #[serde(skip)]
     _others: (),
 }
-#[derive(Debug, Deserialize, Getters)]
-#[getset(get = "pub")]
-pub struct ZeroXResponse {
-    pub is_empty: bool,
-    pub buy: String,
-    pub min_buy: String,
-    pub sources: Vec<String>,
-    pub total_network_fee: String,
-    pub liquidity_available: bool,
-}
 
-impl ZeroXResponse {
-    fn from_empty() -> Self {
-        Self {
-            is_empty: true,
-            buy: "0".to_string(),
-            min_buy: "0".to_string(),
-            sources: vec![],
-            total_network_fee: "0".to_string(),
-            liquidity_available: false,
-        }
-    }
-}
-
-async fn get_zerox_response(
+pub async fn zerox_quote_buy(
     chain_id: &str,
+    taker_address: &str,
     sell_token: &str,
     buy_token: &str,
     sell: &str,
-    taker_address: &str,
-) -> Result<ZeroXGetResponse, reqwest::Error> {
+) -> eyre::Result<String> {
     let client = reqwest::Client::new();
     let params = HashMap::from([
         ("chainId", chain_id),
@@ -85,45 +59,18 @@ async fn get_zerox_response(
     );
     headers.insert("0x-version", HeaderValue::from_static("v2"));
 
-    client
+    let zerox_response: ZeroXGetResponse = client
         .get("https://api.0x.org/swap/permit2/price?")
         .headers(headers)
         .query(&params)
         .send()
         .await?
         .json()
-        .await
-}
+        .await?;
 
-pub async fn zerox_get_quote(
-    chain_id: &str,
-    sell_token: &str,
-    buy_token: &str,
-    sell: &str,
-    taker_address: &str,
-) -> eyre::Result<ZeroXResponse> {
-    let zerox_response =
-        get_zerox_response(chain_id, sell_token, buy_token, sell, taker_address).await?;
-
-    let sources: Vec<String> = zerox_response
-        .route
-        .fills
-        .iter()
-        .map(|fill| fill.source.clone())
-        .collect();
-
-    let response = if zerox_response.is_invalid() {
-        ZeroXResponse::from_empty()
+    if zerox_response.is_invalid() {
+        Err(eyre::eyre!("0x liquidity not available"))
     } else {
-        ZeroXResponse {
-            is_empty: false,
-            buy: zerox_response.buy,
-            min_buy: zerox_response.min_buy,
-            sources,
-            total_network_fee: zerox_response.total_network_fee,
-            liquidity_available: zerox_response.liquidity_available,
-        }
-    };
-
-    Ok(response)
+        Ok(zerox_response.buy)
+    }
 }

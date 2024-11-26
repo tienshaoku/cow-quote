@@ -17,7 +17,7 @@ use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
     aws::AwsClient, cow_get_order_api::cowswap_get_order, cow_post_quote_api::cowswap_quote_buy,
-    uni_fork_swap::uni_swap_buy, zerox_get_quote_api::zerox_get_quote,
+    uni_fork_swap::uni_swap_buy, zerox_get_quote_api::zerox_quote_buy,
 };
 use std::sync::Arc;
 
@@ -75,8 +75,8 @@ pub async fn run() -> eyre::Result<()> {
             let buy_token = cow_api_response.buy_token();
 
             // TODO: include gas cost; complicated calculation
-            match zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await {
-                Ok(zerox_response) => order.update_zerox_comparison(zerox_response),
+            match zerox_quote_buy("1", owner, sell_token, buy_token, sell_amount).await {
+                Ok(quote_buy) => order.update_zerox_comparison(&quote_buy),
                 Err(e) => {
                     eprintln!("0x get quote failed: {}", e);
                 }
@@ -93,7 +93,7 @@ pub async fn run() -> eyre::Result<()> {
 
             // TODO: include gas cost; complicated calculation
             match uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await {
-                Ok(swap_result) => order.update_univ3_swap_comparison(&swap_result),
+                Ok(fork_swap_buy) => order.update_univ3_swap_comparison(&fork_swap_buy),
                 Err(e) => {
                     eprintln!("Uni fork swap failed: {}", e);
                 }

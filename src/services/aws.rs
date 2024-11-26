@@ -71,24 +71,6 @@ impl AwsClient {
                 Self::to_attr(order.zerox_quote_buy(), "N"),
             ),
             (
-                "zerox_min_buy".to_string(),
-                Self::to_attr(order.zerox_min_buy(), "N"),
-            ),
-            (
-                "zerox_sources".to_string(),
-                AttributeValue::L(
-                    order
-                        .zerox_sources()
-                        .iter()
-                        .map(|s| Self::to_attr(s, "S"))
-                        .collect(),
-                ),
-            ),
-            (
-                "compared_min_buy".to_string(),
-                Self::to_attr(order.compared_min_buy(), "N"),
-            ),
-            (
                 "compared_executed_with_zerox_quote".to_string(),
                 Self::to_attr(order.compared_executed_with_zerox_quote(), "N"),
             ),
