@@ -101,7 +101,7 @@ pub async fn zerox_get_quote(
     buy_token: &str,
     sell: &str,
     taker_address: &str,
-) -> Result<ZeroXResponse, reqwest::Error> {
+) -> eyre::Result<ZeroXResponse> {
     let zerox_response =
         get_zerox_response(chain_id, sell_token, buy_token, sell, taker_address).await?;
 

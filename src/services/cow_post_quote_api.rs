@@ -44,7 +44,7 @@ pub async fn cowswap_quote_buy(
     sell_token: &str,
     buy_token: &str,
     sell: &str,
-) -> Result<String, reqwest::Error> {
+) -> eyre::Result<String> {
     let client = reqwest::Client::new();
     let url = "https://api.cow.fi/mainnet/api/v1/quote";
 
@@ -69,15 +69,19 @@ pub async fn cowswap_quote_buy(
         .post(url)
         .json(&quote_param)
         .send()
-        .await?
+        .await
+        .map_err(|e| eyre::eyre!("Failed to send request: {}", e))?
         .json()
-        .await?;
+        .await
+        .map_err(|e| eyre::eyre!("Failed to parse response into json: {}", e))?;
 
     // response.quote.sell & sell aren't always the same because of fees
     let original_sell = U256::from_dec_str(sell).unwrap();
     let sell = U256::from_dec_str(&response.quote.sell).unwrap();
     let fee = U256::from_dec_str(&response.quote.fee).unwrap();
-    assert!(sell == original_sell || sell + fee == original_sell);
 
-    Ok(response.quote.buy)
+    match sell == original_sell || sell + fee == original_sell {
+        true => Ok(response.quote.buy),
+        false => Err(eyre::eyre!("Sell amount mismatch")),
+    }
 }

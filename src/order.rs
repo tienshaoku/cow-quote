@@ -1,6 +1,6 @@
 use crate::constant;
 use crate::contract::ierc20::get_token_decimals;
-use crate::format::{format_decimal_point, format_decimals, format_four_decimal_point};
+use crate::format::format_decimals_into_f;
 use crate::services::{cow_get_order_api::CowGetResponse, zerox_get_quote_api::ZeroXResponse};
 use getset::Getters;
 
@@ -22,28 +22,28 @@ pub struct Order {
     buy_decimals: u8,
     sell_decimals: u8,
 
-    min_buy: String,
-    sell: String,
-    executed_buy: String,
-    executed_sell: String,
+    min_buy: f64,
+    sell: f64,
+    executed_buy: f64,
+    executed_sell: f64,
 
-    net_surplus: String,
-    surplus_percentage: String,
+    net_surplus: f64,
+    surplus_percentage: f64,
 
-    zerox_quote_buy: String,
-    zerox_min_buy: String,
+    zerox_min_buy: f64,
     zerox_sources: Vec<String>,
-    compared_min_buy: String,
-    compared_executed_with_zerox_quote: String,
-    compared_with_zerox_percentage: String,
+    zerox_quote_buy: f64,
+    compared_executed_with_zerox_quote: f64,
+    compared_with_zerox_percentage: f64,
+    compared_min_buy: f64,
 
-    cows_own_quote_buy: String,
-    compared_executed_with_cows_own_quote: String,
-    compared_with_cows_own_quote_percentage: String,
+    cows_own_quote_buy: f64,
+    compared_executed_with_cows_own_quote: f64,
+    compared_with_cows_own_quote_percentage: f64,
 
-    univ3_swap_buy: String,
-    compared_executed_with_univ3_swap: String,
-    compared_with_univ3_swap_percentage: String,
+    univ3_swap_buy: f64,
+    compared_executed_with_univ3_swap: f64,
+    compared_with_univ3_swap_percentage: f64,
 
     block_number: u64,
     // in unlikely cases where timestamp == 0, data user can query it from block_number
@@ -74,12 +74,8 @@ impl Order {
         )
         .await?;
 
-        let mut net_surplus: f64 = 0.0;
-        let mut surplus_percentage: String;
-
-        net_surplus = executed_buy.parse::<f64>().unwrap() - min_buy.parse::<f64>().unwrap();
-        surplus_percentage =
-            format_four_decimal_point(net_surplus / min_buy.parse::<f64>().unwrap());
+        let net_surplus = executed_buy - min_buy;
+        let surplus_percentage = net_surplus / min_buy;
 
         Ok(Order {
             uid,
@@ -92,7 +88,7 @@ impl Order {
             sell,
             executed_buy,
             executed_sell,
-            net_surplus: format_decimal_point(net_surplus, buy_decimals),
+            net_surplus,
             surplus_percentage,
             block_number,
             timestamp,
@@ -100,61 +96,57 @@ impl Order {
         })
     }
 
-    fn calculate_percentage(&self, is_input_zero: bool, diff: &str) -> String {
-        if is_input_zero {
-            "1".to_string()
+    fn calculate_percentage(&self, input: f64) -> f64 {
+        if input == 0.0 {
+            1.0
         } else {
-            let denominator = if self.min_buy == "0" {
+            let denominator = if self.min_buy == 0.0 {
                 &self.executed_buy
             } else {
                 &self.min_buy
             };
-            format_four_decimal_point(
-                diff.parse::<f64>().unwrap() / denominator.parse::<f64>().unwrap(),
-            )
+            self.compare(input) / denominator
         }
+    }
+
+    fn compare(&self, input: f64) -> f64 {
+        self.executed_buy - input
     }
 
     pub fn update_zerox_comparison(&mut self, response: ZeroXResponse) {
         let decimals: u8 = self.buy_decimals;
-
-        let zerox_quote_buy = format_decimals(response.buy(), decimals);
-        let zerox_min_buy = format_decimals(response.min_buy(), decimals);
-
-        let compared_executed_with_zerox_quote =
-            compare(&self.executed_buy, &zerox_quote_buy, decimals);
-
-        self.zerox_quote_buy = zerox_quote_buy;
-        self.zerox_min_buy = zerox_min_buy.clone();
+        self.zerox_min_buy = format_decimals_into_f(response.min_buy(), decimals);
         self.zerox_sources = response.sources().to_vec();
+        self.zerox_quote_buy = format_decimals_into_f(response.buy(), decimals);
 
-        self.compared_min_buy = compare(&self.min_buy, &zerox_min_buy, decimals);
-        self.compared_executed_with_zerox_quote = compared_executed_with_zerox_quote.clone();
-        self.compared_with_zerox_percentage = self.calculate_percentage(
-            *response.is_empty(),
-            &self.compared_executed_with_zerox_quote,
-        );
+        self.compared_executed_with_zerox_quote = self.compare(self.zerox_quote_buy);
+        self.compared_with_zerox_percentage = self.calculate_percentage(self.zerox_quote_buy);
+        self.compared_min_buy = self.min_buy - self.zerox_min_buy;
     }
 
     pub fn update_cows_own_quote_comparison(&mut self, quote_buy: &str) {
-        self.cows_own_quote_buy = format_decimals(quote_buy, self.buy_decimals);
-        self.compared_executed_with_cows_own_quote = compare(
-            &self.executed_buy,
-            &self.cows_own_quote_buy,
-            self.buy_decimals,
-        );
-        self.compared_with_cows_own_quote_percentage = self.calculate_percentage(
-            quote_buy == "0",
-            &self.compared_executed_with_cows_own_quote,
-        );
+        self.cows_own_quote_buy = format_decimals_into_f(quote_buy, self.buy_decimals);
+        self.compared_executed_with_cows_own_quote = self.compare(self.cows_own_quote_buy);
+        self.compared_with_cows_own_quote_percentage =
+            self.calculate_percentage(self.cows_own_quote_buy);
     }
 
     pub fn update_univ3_swap_comparison(&mut self, quote_buy: &str) {
-        self.univ3_swap_buy = format_decimals(quote_buy, self.buy_decimals);
-        self.compared_executed_with_univ3_swap =
-            compare(&self.executed_buy, &self.univ3_swap_buy, self.buy_decimals);
-        self.compared_with_univ3_swap_percentage =
-            self.calculate_percentage(quote_buy == "0", &self.compared_executed_with_univ3_swap);
+        self.univ3_swap_buy = format_decimals_into_f(quote_buy, self.buy_decimals);
+        self.compared_executed_with_univ3_swap = self.compare(self.univ3_swap_buy);
+        self.compared_with_univ3_swap_percentage = self.calculate_percentage(self.univ3_swap_buy);
+    }
+
+    pub fn no_successful_quote_at_all(&self) -> bool {
+        self.zerox_quote_buy == 0.0
+            && self.compared_executed_with_zerox_quote == 0.0
+            && self.compared_with_zerox_percentage == 0.0
+            && self.cows_own_quote_buy == 0.0
+            && self.compared_executed_with_cows_own_quote == 0.0
+            && self.compared_with_cows_own_quote_percentage == 0.0
+            && self.univ3_swap_buy == 0.0
+            && self.compared_executed_with_univ3_swap == 0.0
+            && self.compared_with_univ3_swap_percentage == 0.0
     }
 }
 
@@ -163,20 +155,13 @@ async fn process_order_info(
     address: &str,
     planned_amount: &str,
     executed_amount: &str,
-) -> eyre::Result<(u8, String, String)> {
+) -> eyre::Result<(u8, f64, f64)> {
     let is_weth = address == constant::WETH;
     let decimals =
         get_token_decimals(Arc::clone(&provider), address.parse::<Address>()?, is_weth).await?;
 
-    let planned = format_decimals(planned_amount, decimals);
-    let executed = format_decimals(executed_amount, decimals);
+    let planned = format_decimals_into_f(planned_amount, decimals);
+    let executed = format_decimals_into_f(executed_amount, decimals);
 
     Ok((decimals, planned, executed))
-}
-
-fn compare(comparer: &str, comparee: &str, decimals: u8) -> String {
-    format_decimal_point(
-        comparer.parse::<f64>().unwrap() - comparee.parse::<f64>().unwrap(),
-        decimals,
-    )
 }

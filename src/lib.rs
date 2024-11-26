@@ -60,11 +60,6 @@ pub async fn run() -> eyre::Result<()> {
                 None => 0,
             };
 
-            let owner = cow_api_response.owner();
-            let sell_token = cow_api_response.sell_token();
-            let sell_amount = cow_api_response.sell();
-            let buy_token = cow_api_response.buy_token();
-
             let mut order = Order::from_cow_api_response(
                 Arc::clone(&wss_provider),
                 order_uid.to_string(),
@@ -74,26 +69,39 @@ pub async fn run() -> eyre::Result<()> {
             )
             .await?;
 
-            let zerox_response =
-                zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await?;
+            let owner = cow_api_response.owner();
+            let sell_token = cow_api_response.sell_token();
+            let sell_amount = cow_api_response.sell();
+            let buy_token = cow_api_response.buy_token();
 
             // TODO: include gas cost; complicated calculation
-            order.update_zerox_comparison(zerox_response);
+            match zerox_get_quote("1", sell_token, buy_token, sell_amount, owner).await {
+                Ok(zerox_response) => order.update_zerox_comparison(zerox_response),
+                Err(e) => {
+                    eprintln!("0x get quote failed: {}", e);
+                }
+            }
 
-            let cows_own_quote_buy =
-                cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await?;
-            order.update_cows_own_quote_comparison(&cows_own_quote_buy);
+            match cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await {
+                Ok(cows_own_quote_buy) => {
+                    order.update_cows_own_quote_comparison(&cows_own_quote_buy)
+                }
+                Err(e) => {
+                    eprintln!("CowSwap own quote failed: {}", e);
+                }
+            }
 
             // TODO: include gas cost; complicated calculation
-
             match uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await {
                 Ok(swap_result) => order.update_univ3_swap_comparison(&swap_result),
                 Err(e) => {
-                    // TODO: change Order's default value to 0.0 (f64) instead of String s.t.
-                    //       it's okay not to update here when uni_swap_buy() returns Err
-                    order.update_univ3_swap_comparison("0");
                     eprintln!("Uni fork swap failed: {}", e);
                 }
+            }
+
+            if order.no_successful_quote_at_all() {
+                eprintln!("No successful quote at all");
+                continue;
             }
 
             if let Err(e) = aws_client.upload_order(&order).await {
