@@ -34,6 +34,17 @@ pub struct TradeEvent {
     pub order_uid: Bytes,
 }
 
+macro_rules! fetch_quote_and_update_order {
+    ($quote_fn:expr, $order:expr, $update_method:ident, $error_msg:expr) => {
+        match $quote_fn.await {
+            Ok(quote) => $order.$update_method(&quote),
+            Err(e) => {
+                eprintln!("{}: {}", $error_msg, e);
+            }
+        }
+    };
+}
+
 pub async fn run() -> eyre::Result<()> {
     let wss_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
     let wss_provider = Arc::new(wss_provider);
@@ -74,30 +85,26 @@ pub async fn run() -> eyre::Result<()> {
             let sell_amount = cow_api_response.sell();
             let buy_token = cow_api_response.buy_token();
 
-            // TODO: include gas cost; complicated calculation
-            match zerox_quote_buy("1", owner, sell_token, buy_token, sell_amount).await {
-                Ok(quote_buy) => order.update_zerox_comparison(&quote_buy),
-                Err(e) => {
-                    eprintln!("0x get quote failed: {}", e);
-                }
-            }
+            fetch_quote_and_update_order!(
+                zerox_quote_buy("1", owner, sell_token, buy_token, sell_amount),
+                order,
+                update_zerox_comparison,
+                "0x get quote failed"
+            );
 
-            match cowswap_quote_buy(owner, sell_token, buy_token, sell_amount).await {
-                Ok(cows_own_quote_buy) => {
-                    order.update_cows_own_quote_comparison(&cows_own_quote_buy)
-                }
-                Err(e) => {
-                    eprintln!("CowSwap own quote failed: {}", e);
-                }
-            }
+            fetch_quote_and_update_order!(
+                cowswap_quote_buy(owner, sell_token, buy_token, sell_amount),
+                order,
+                update_cows_own_quote_comparison,
+                "CowSwap own quote failed"
+            );
 
-            // TODO: include gas cost; complicated calculation
-            match uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount).await {
-                Ok(fork_swap_buy) => order.update_univ3_swap_comparison(&fork_swap_buy),
-                Err(e) => {
-                    eprintln!("Uni fork swap failed: {}", e);
-                }
-            }
+            fetch_quote_and_update_order!(
+                uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount),
+                order,
+                update_univ3_swap_comparison,
+                "Uni fork swap failed"
+            );
 
             if order.no_successful_quote_at_all() {
                 eprintln!("No successful quote at all");
