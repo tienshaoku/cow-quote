@@ -23,26 +23,33 @@ pub async fn lambda_handler(event: LambdaEvent<Request>) -> Result<Response, Err
     match timeout(Duration::from_secs(duration), run()).await {
         Ok(result) => match result {
             Ok(_) => {
-                println!("Function completed successfully");
+                let message = String::from("Function completed successfully");
+                println!("{}", message);
                 Ok(Response {
                     status: "success".to_string(),
-                    message: "Completed successfully".to_string(),
+                    message,
                 })
             }
             Err(e) => {
-                println!("Function failed with error: {}", e);
+                let message = format!("Function failed with error: {}", e);
+                println!("{}", message);
                 Ok(Response {
                     status: "error".to_string(),
-                    message: format!("Error during execution: {}", e),
+                    message,
                 })
             }
         },
         Err(_) => {
-            println!("Function timed out");
+            let message = format!("Function timed out after {} seconds", duration);
+            println!("{}", message);
             Ok(Response {
                 status: "timeout".to_string(),
-                message: format!("Function timed out after {} seconds", duration),
+                message,
             })
         }
     }
+}
+
+pub fn is_running_in_aws_lambda() -> bool {
+    std::env::var("AWS_LAMBDA_RUNTIME_API").is_ok()
 }
