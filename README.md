@@ -59,3 +59,11 @@ aws lambda invoke --function-name cow-quote output.json
 ```
 ./script/deploy-lambda.sh
 ```
+
+## Docker
+
+- Test locally
+
+```
+docker run --env-file .env -p 9000:9000 cow-quote-local
+```

@@ -1,0 +1,32 @@
+FROM ghcr.io/cargo-lambda/cargo-lambda:latest
+# FROM rust:1.78-slim
+
+WORKDIR /usr/src/app
+
+# Install necessary build tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install foundry
+RUN curl -L https://foundry.paradigm.xyz | bash
+RUN /root/.foundry/bin/foundryup
+
+# Add foundry binaries to PATH
+ENV PATH="/root/.foundry/bin:${PATH}"
+
+# Copy your application code
+COPY . .
+
+# Build your application
+RUN cargo build
+
+# Expose port 9000 for lambda web adapter
+EXPOSE 9000
+
+# Command to run your application
+CMD ["cargo", "lambda", "watch"]

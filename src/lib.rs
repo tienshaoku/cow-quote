@@ -16,9 +16,9 @@ use futures::StreamExt;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
-    aws_dynamodb::DynamoDbClient, aws_lambda::is_running_in_aws_lambda,
-    cow_get_order_api::cowswap_get_order, cow_post_quote_api::cowswap_quote_buy,
-    uni_fork_swap::uni_swap_buy, zerox_get_quote_api::zerox_quote_buy,
+    aws_dynamodb::DynamoDbClient, cow_get_order_api::cowswap_get_order,
+    cow_post_quote_api::cowswap_quote_buy, uni_fork_swap::uni_swap_buy,
+    zerox_get_quote_api::zerox_quote_buy,
 };
 use std::sync::Arc;
 
@@ -100,14 +100,12 @@ pub async fn run() -> eyre::Result<()> {
                 "CowSwap own quote failed"
             );
 
-            if !is_running_in_aws_lambda() {
-                fetch_quote_and_update_order!(
-                    uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount),
-                    order,
-                    update_univ3_swap_comparison,
-                    "Uni fork swap failed"
-                );
-            }
+            fetch_quote_and_update_order!(
+                uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount),
+                order,
+                update_univ3_swap_comparison,
+                "Uni fork swap failed"
+            );
 
             if order.no_successful_quote_at_all() {
                 eprintln!("No successful quote at all");
