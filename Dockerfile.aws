@@ -1,0 +1,45 @@
+FROM ghcr.io/cargo-lambda/cargo-lambda:latest AS builder
+# FROM rust:1.78-slim
+
+WORKDIR /usr/src/app
+
+# Install necessary build tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install foundry
+RUN curl -L https://foundry.paradigm.xyz | bash
+
+# Must set path first and then foundryup
+ENV PATH="/root/.foundry/bin:${PATH}"
+RUN echo $PATH
+RUN /root/.foundry/bin/foundryup
+
+# Want to check if Anvil is installed but doesn't seem to work 
+# RUN which anvil || echo "Anvil not found"
+
+# Copy your application code
+COPY . .
+
+# Build your application
+RUN cargo build --release
+
+# Final stage
+FROM ghcr.io/cargo-lambda/cargo-lambda:latest
+
+# Must set path for the final image as well
+ENV PATH="/root/.foundry/bin:${PATH}"
+
+# Copy only the necessary files from the builder stage
+COPY --from=builder /usr/src/app/target/release/cow-quote .
+
+# Expose port 9000 for lambda web adapter
+EXPOSE 9000
+
+# Command to run your application
+CMD ["./cow-quote"]

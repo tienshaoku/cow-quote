@@ -67,3 +67,15 @@ aws lambda invoke --function-name cow-quote output.json
 ```
 docker run --env-file .env -p 9000:9000 cow-quote-local
 ```
+
+- Go into the local image
+
+```
+docker run -it --rm cow-quote-local /bin/sh
+```
+
+- Pre-pull docker image to speed up the build
+
+```
+docker pull ghcr.io/cargo-lambda/cargo-lambda:latest
+```
