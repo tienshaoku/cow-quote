@@ -1,5 +1,4 @@
 FROM ghcr.io/cargo-lambda/cargo-lambda:latest
-# FROM rust:1.78-slim
 
 WORKDIR /usr/src/app
 

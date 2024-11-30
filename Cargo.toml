@@ -25,3 +25,7 @@ lto = false
 
 [profile.release]
 lto = true 
+
+[[bin]]
+name = "cow-quote"
+path = "src/main.rs"
