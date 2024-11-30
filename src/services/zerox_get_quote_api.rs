@@ -37,13 +37,13 @@ struct Fill {
 }
 
 pub async fn zerox_quote_buy(
+    client: &reqwest::Client,
     chain_id: &str,
     taker_address: &str,
     sell_token: &str,
     buy_token: &str,
     sell: &str,
 ) -> eyre::Result<String> {
-    let client = reqwest::Client::new();
     let params = HashMap::from([
         ("chainId", chain_id),
         ("sellToken", sell_token),
@@ -64,9 +64,11 @@ pub async fn zerox_quote_buy(
         .headers(headers)
         .query(&params)
         .send()
-        .await?
+        .await
+        .map_err(|e| eyre::eyre!("Failed to send request: {}", e))?
         .json()
-        .await?;
+        .await
+        .map_err(|e| eyre::eyre!("Failed to parse response into json: {}", e))?;
 
     if zerox_response.is_invalid() {
         Err(eyre::eyre!("0x liquidity not available"))

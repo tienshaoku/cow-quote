@@ -26,9 +26,19 @@ impl CowGetResponse {
     }
 }
 
-pub async fn cowswap_get_order(order_uid: &str) -> Result<(CowGetResponse, bool), reqwest::Error> {
+pub async fn cowswap_get_order(
+    client: &reqwest::Client,
+    order_uid: &str,
+) -> eyre::Result<(CowGetResponse, bool)> {
     let url: String = format!("https://api.cow.fi/mainnet/api/v1/orders/{}", order_uid);
-    let response = reqwest::get(&url).await?.json::<CowGetResponse>().await?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| eyre::eyre!("Failed to send request: {}", e))?
+        .json::<CowGetResponse>()
+        .await
+        .map_err(|e| eyre::eyre!("Failed to parse response into json: {}", e))?;
 
     // 1. 0x has only sell orders
     // 2. exclude partial fills for now

@@ -40,12 +40,12 @@ struct Quote {
 }
 
 pub async fn cowswap_quote_buy(
+    client: &reqwest::Client,
     owner: &str,
     sell_token: &str,
     buy_token: &str,
     sell: &str,
 ) -> eyre::Result<String> {
-    let client = reqwest::Client::new();
     let url = "https://api.cow.fi/mainnet/api/v1/quote";
 
     let quote_param = QuoteParam {

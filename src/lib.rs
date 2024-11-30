@@ -60,7 +60,9 @@ pub async fn run() -> eyre::Result<()> {
     while let Some(Ok((trade, meta))) = stream.next().await {
         let order_uid = trade.order_uid;
 
-        let (cow_api_response, should_proceed) = cowswap_get_order(&order_uid.to_string()).await?;
+        let api_client = reqwest::Client::new();
+        let (cow_api_response, should_proceed) =
+            cowswap_get_order(&api_client, &order_uid.to_string()).await?;
 
         // TODO: see if can throw this into a thread
         if should_proceed {
@@ -87,14 +89,14 @@ pub async fn run() -> eyre::Result<()> {
             let buy_token = cow_api_response.buy_token();
 
             fetch_quote_and_update_order!(
-                zerox_quote_buy("1", owner, sell_token, buy_token, sell_amount),
+                zerox_quote_buy(&api_client, "1", owner, sell_token, buy_token, sell_amount),
                 order,
                 update_zerox_comparison,
                 "0x get quote failed"
             );
 
             fetch_quote_and_update_order!(
-                cowswap_quote_buy(owner, sell_token, buy_token, sell_amount),
+                cowswap_quote_buy(&api_client, owner, sell_token, buy_token, sell_amount),
                 order,
                 update_cows_own_quote_comparison,
                 "CowSwap own quote failed"
