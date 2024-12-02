@@ -1,43 +1,31 @@
-## AWS Commands
+# CowSwap Settlement Price Comparison
 
-### Table
+This is a WIP side project, aiming to build a dashboard to showcase the generous surplus of CowSwap settlements, which is difficult to be estimated pre-swap.
 
-- List tables
+## Motivation
 
-```
-aws dynamodb list-tables
-```
+CowSwap's settlement price, which includes extra surplus compared to pre-swap quote, is often better than price offers from many liquidity aggregators and DEXs.
 
-- Check all orders
+However, the final settlement price and surplus cannot be predicted perfectly pre-swap, for solvers on CowSwap compete to offer the best price. This makes it difficult for users to be aware of the great prices on CowSwap.
 
-```
-aws dynamodb scan --table-name orders
-```
+Thus, this project aims to build a dashboard to visualise comparison between CowSwap and other liquidity aggregators and DEXs.
 
-- List tables
+## Goals and Progress
 
-```
-aws dynamodb list-tables
-```
+- [x] Get order info from CowSwap API
+- [x] Comparison with 0x API
+- [x] Comparison with Uni V3 using Foundry Anvil
+  - By forking one block before a settlement and impersonating the user to perfectly simulate "what if the trade was executed on Uni V3" swap
+- [x] Setup AWS Lambda
+- [x] Setup DynamoDB
+- [ ] Setup API Gateway
+- [ ] Setup Frontend
 
-### Lambda
-
-- Start a local lambda watch
-
-```
-cargo lambda watch
-```
-
-and then post it with `curl`
+## Commands
 
 ```
-curl -XPOST "http://localhost:9000/lambda-url/cow-quote" -d '{}'
-```
-
-- Invoke aws deployment
-
-```
-aws lambda invoke --function-name cow-quote output.json
+cargo build
+cargo run
 ```
 
 ### Scripts
@@ -60,7 +48,49 @@ aws lambda invoke --function-name cow-quote output.json
 ./script/deploy-lambda.sh
 ```
 
-## Docker
+### AWS
+
+#### Table
+
+- List tables
+
+```
+aws dynamodb list-tables
+```
+
+- Check all orders
+
+```
+aws dynamodb scan --table-name orders
+```
+
+- List tables
+
+```
+aws dynamodb list-tables
+```
+
+#### Lambda
+
+- Start a local lambda watch
+
+```
+cargo lambda watch
+```
+
+and then post it with `curl`
+
+```
+curl -XPOST "http://localhost:9000/lambda-url/cow-quote" -d '{}'
+```
+
+- Invoke aws deployment
+
+```
+aws lambda invoke --function-name cow-quote output.json
+```
+
+### Docker
 
 - Test locally
 
@@ -73,3 +103,12 @@ docker run --env-file .env -p 9000:9000 cow-quote-local
 ```
 docker run -it --rm cow-quote-local /bin/sh
 ```
+
+## Built with
+
+- Rust
+- Foundry
+- AWS Lambda
+- AWS DynamoDB
+- Docker
+- Alchemy, 0x & CowSwap APIs
