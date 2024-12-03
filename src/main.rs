@@ -1,5 +1,5 @@
 use cow_quote::run;
-use cow_quote::services::aws_lambda::{handle_request, is_running_in_aws_ec2};
+use cow_quote::services::aws_ec2::{handle_request, is_running_in_aws_ec2};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
