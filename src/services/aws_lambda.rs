@@ -1,13 +1,8 @@
 use crate::run;
-use lambda_runtime::{Error, LambdaEvent};
-use serde::{Deserialize, Serialize};
+use lambda_runtime::Error;
+use serde::Serialize;
 use std::time::Duration;
 use tokio::time::timeout;
-
-#[derive(Deserialize, Debug)]
-pub struct Request {
-    run_duration: Option<u64>,
-}
 
 #[derive(Serialize)]
 pub struct Response {
@@ -15,10 +10,10 @@ pub struct Response {
     message: String,
 }
 
-pub async fn lambda_handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
-    println!("Received payload: {:?}", event.payload);
+pub async fn handle_request() -> Result<Response, Error> {
+    println!("handle_request() on AWS EC2");
 
-    let duration = event.payload.run_duration.unwrap_or(14 * 60);
+    let duration = 15 * 60;
 
     match timeout(Duration::from_secs(duration), run()).await {
         Ok(result) => match result {
@@ -50,6 +45,6 @@ pub async fn lambda_handler(event: LambdaEvent<Request>) -> Result<Response, Err
     }
 }
 
-pub fn is_running_in_aws_lambda() -> bool {
-    std::env::var("AWS_LAMBDA_RUNTIME_API").is_ok()
+pub fn is_running_in_aws_ec2() -> bool {
+    std::env::var("EC2_INSTANCE_ID").is_ok()
 }
