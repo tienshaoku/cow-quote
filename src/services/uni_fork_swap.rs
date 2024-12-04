@@ -1,9 +1,10 @@
+use crate::constant;
 use crate::contract::{
     ierc20::IERC20,
     ifactory::IFactory,
     swap_router::{ExactInputSingleParams, SwapRouter},
 };
-use crate::{constant, secret};
+use crate::helper::EnvConfig;
 use ethers::{
     core::utils::{parse_ether, Anvil},
     providers::{Http, Provider},
@@ -14,6 +15,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 pub async fn uni_swap_buy(
+    config: &EnvConfig,
     block_number: u64,
     owner: &str,
     sell_token: &str,
@@ -22,7 +24,7 @@ pub async fn uni_swap_buy(
 ) -> eyre::Result<String> {
     let forked_block_number = block_number - 1;
     let anvil = Anvil::new()
-        .fork(secret::HTTP_ETH_RPC)
+        .fork(config.get_alchemy_http_url())
         .chain_id(1_u64)
         .fork_block_number(forked_block_number)
         .spawn();

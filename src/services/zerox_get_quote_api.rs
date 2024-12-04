@@ -1,4 +1,4 @@
-use crate::secret;
+use crate::EnvConfig;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -37,6 +37,7 @@ struct Fill {
 }
 
 pub async fn zerox_quote_buy(
+    config: &EnvConfig,
     client: &reqwest::Client,
     chain_id: &str,
     taker_address: &str,
@@ -55,7 +56,8 @@ pub async fn zerox_quote_buy(
     let mut headers = HeaderMap::new();
     headers.insert(
         "0x-api-key",
-        HeaderValue::from_static(secret::ZEROX_API_KEY),
+        HeaderValue::from_str(config.zerox_api_key())
+            .map_err(|e| eyre::eyre!("Invalid 0x API header value: {}", e))?,
     );
     headers.insert("0x-version", HeaderValue::from_static("v2"));
 

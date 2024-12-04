@@ -1,9 +1,7 @@
 mod constant;
 mod contract;
-mod helper;
+pub mod helper;
 mod order;
-#[path = "secret.rs"]
-mod secret;
 pub mod services;
 
 use ethers::{
@@ -13,6 +11,7 @@ use ethers::{
     types::{Address, Bytes, Filter, U256},
 };
 use futures::StreamExt;
+use helper::EnvConfig;
 use order::Order;
 use serde::{Deserialize, Serialize};
 use services::{
@@ -46,8 +45,8 @@ macro_rules! fetch_quote_and_update_order {
     };
 }
 
-pub async fn run() -> eyre::Result<()> {
-    let wss_provider = Provider::<Ws>::connect(secret::WSS_ETH_RPC).await?;
+pub async fn run(config: EnvConfig) -> eyre::Result<()> {
+    let wss_provider = Provider::<Ws>::connect(config.get_alchemy_wss_url()).await?;
     let wss_provider = Arc::new(wss_provider);
 
     let aws_client = DynamoDbClient::new().await?;
@@ -89,7 +88,15 @@ pub async fn run() -> eyre::Result<()> {
             let buy_token = cow_api_response.buy_token();
 
             fetch_quote_and_update_order!(
-                zerox_quote_buy(&api_client, "1", owner, sell_token, buy_token, sell_amount),
+                zerox_quote_buy(
+                    &config,
+                    &api_client,
+                    "1",
+                    owner,
+                    sell_token,
+                    buy_token,
+                    sell_amount
+                ),
                 order,
                 update_zerox_comparison,
                 "0x get quote failed"
@@ -103,7 +110,14 @@ pub async fn run() -> eyre::Result<()> {
             );
 
             fetch_quote_and_update_order!(
-                uni_swap_buy(block_number, owner, sell_token, buy_token, sell_amount),
+                uni_swap_buy(
+                    &config,
+                    block_number,
+                    owner,
+                    sell_token,
+                    buy_token,
+                    sell_amount
+                ),
                 order,
                 update_univ3_swap_comparison,
                 "Uni fork swap failed"
