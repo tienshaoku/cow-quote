@@ -1,6 +1,6 @@
 use crate::helper::EnvConfig;
 use crate::run;
-use aws-sdk-ec2::Error;
+use aws_sdk_ec2::Error;
 use serde::Serialize;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -47,5 +47,14 @@ pub async fn handle_request(config: EnvConfig) -> Result<Response, Error> {
 }
 
 pub fn is_running_in_aws_ec2() -> bool {
-    std::env::var("EC2_INSTANCE_ID").is_ok()
+    let output = std::process::Command::new("curl")
+        .arg("--connect-timeout")
+        .arg("2") // 2 second timeout
+        .arg("http://169.254.169.254/latest/meta-data/instance-id")
+        .output();
+
+    match output {
+        Ok(output) => output.status.success(),
+        Err(_) => false,
+    }
 }
