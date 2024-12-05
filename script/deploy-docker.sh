@@ -66,6 +66,7 @@ ssh -i ${KEY_PAIR_PATH} ec2-user@${EC2_INSTANCE_IP} << EOF
     echo "Pulling Docker image on EC2..."
     docker pull ${ECR_REPO}:${IMAGE_TAG}
     
+    # ssh into the instance and create .env file then run this
     echo "Running Docker container..."
     docker run --env-file .env -p 9000:9000 ${ECR_REPO}:${IMAGE_TAG}
 EOF

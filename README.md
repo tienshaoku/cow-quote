@@ -16,7 +16,7 @@ Thus, this project aims to build a dashboard to visualise comparison between Cow
 - [x] Comparison with 0x API
 - [x] Comparison with Uni V3 using Foundry Anvil
   - By forking one block before a settlement and impersonating the user to perfectly simulate "what if the trade was executed on Uni V3" swap
-- [x] Setup AWS Lambda
+- [x] Setup AWS EC2
 - [x] Setup DynamoDB
 - [ ] Setup API Gateway
 - [ ] Setup Frontend
@@ -42,12 +42,6 @@ cargo run
 ./script/delete_table.sh
 ```
 
-- Deploy the lambda function
-
-```
-./script/deploy-lambda.sh
-```
-
 ### AWS
 
 #### Table
@@ -70,26 +64,6 @@ aws dynamodb scan --table-name orders
 aws dynamodb list-tables
 ```
 
-#### Lambda
-
-- Start a local lambda watch
-
-```
-cargo lambda watch
-```
-
-and then post it with `curl`
-
-```
-curl -XPOST "http://localhost:9000/lambda-url/cow-quote" -d '{}'
-```
-
-- Invoke aws deployment
-
-```
-aws lambda invoke --function-name cow-quote output.json
-```
-
 ### Docker
 
 - Test locally
@@ -108,7 +82,7 @@ docker run -it --rm cow-quote-local /bin/sh
 
 - Rust
 - Foundry
-- AWS Lambda
+- AWS EC2
 - AWS DynamoDB
 - Docker
 - Alchemy, 0x & CowSwap APIs
