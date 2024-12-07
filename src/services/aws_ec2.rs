@@ -1,4 +1,3 @@
-use crate::helper::EnvConfig;
 use crate::run;
 use aws_sdk_ec2::Error;
 use serde::Serialize;
@@ -11,12 +10,12 @@ pub struct Response {
     message: String,
 }
 
-pub async fn handle_request(config: EnvConfig) -> Result<Response, Error> {
+pub async fn handle_request() -> Result<Response, Error> {
     println!("handle_request() on AWS EC2");
 
     let duration = 15 * 60;
 
-    match timeout(Duration::from_secs(duration), run(config)).await {
+    match timeout(Duration::from_secs(duration), run()).await {
         Ok(result) => match result {
             Ok(_) => {
                 let message = String::from("Function completed successfully");

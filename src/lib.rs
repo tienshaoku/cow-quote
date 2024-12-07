@@ -45,7 +45,9 @@ macro_rules! fetch_quote_and_update_order {
     };
 }
 
-pub async fn run(config: EnvConfig) -> eyre::Result<()> {
+pub async fn run() -> eyre::Result<()> {
+    let config = EnvConfig::new();
+
     let wss_provider = Provider::<Ws>::connect(config.get_alchemy_wss_url()).await?;
     let wss_provider = Arc::new(wss_provider);
 
