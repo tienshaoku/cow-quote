@@ -20,6 +20,8 @@ use services::{
     zerox_get_quote_api::zerox_quote_buy,
 };
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::timeout;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
@@ -43,6 +45,18 @@ macro_rules! fetch_quote_and_update_order {
             }
         }
     };
+}
+
+pub async fn run_with_timeout() -> eyre::Result<String> {
+    let duration = 15 * 60;
+
+    let message = match timeout(Duration::from_secs(duration), run()).await {
+        Ok(Ok(_)) => "Function completed successfully".to_string(),
+        Ok(Err(e)) => format!("Function failed with error: {}", e),
+        Err(_) => format!("Function timed out after {} seconds", duration),
+    };
+
+    Ok(message)
 }
 
 pub async fn run() -> eyre::Result<()> {
