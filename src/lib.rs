@@ -21,7 +21,6 @@ use services::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::timeout;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EthEvent)]
 #[ethevent(name = "Trade")]
@@ -47,16 +46,25 @@ macro_rules! fetch_quote_and_update_order {
     };
 }
 
+pub async fn handle_start_service() -> eyre::Result<String> {
+    tokio::spawn(run_with_timeout());
+
+    Ok("Blockchain service has started".to_string())
+}
+
 pub async fn run_with_timeout() -> eyre::Result<String> {
-    let duration = 15 * 60;
+    // TODO: change back to 15 mins before live
+    let duration = 2 * 60;
 
-    let message = match timeout(Duration::from_secs(duration), run()).await {
-        Ok(Ok(_)) => "Function completed successfully".to_string(),
-        Ok(Err(e)) => format!("Function failed with error: {}", e),
-        Err(_) => format!("Function timed out after {} seconds", duration),
-    };
-
-    Ok(message)
+    tokio::select! {
+        _ = run() => Err(eyre::eyre!("Service error")),
+        // use timeout to end the service
+        _ = tokio::time::sleep(Duration::from_secs(duration)) => {
+            let message = format!("Service has ended after {} secs", duration);
+            println!("{}", message);
+            Ok(message)
+        }
+    }
 }
 
 pub async fn run() -> eyre::Result<()> {
