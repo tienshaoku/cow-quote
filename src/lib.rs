@@ -1,7 +1,7 @@
 mod constant;
 mod contract;
 pub mod helper;
-mod order;
+pub mod order;
 pub mod services;
 
 use ethers::{

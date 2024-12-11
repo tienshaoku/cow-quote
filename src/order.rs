@@ -1,7 +1,11 @@
 use crate::constant;
 use crate::contract::ierc20::get_token_decimals;
 use crate::helper::format_decimals_into_f;
-use crate::services::cow_get_order_api::CowGetResponse;
+use crate::services::{
+    aws_dynamodb::{extract_number, extract_string},
+    cow_get_order_api::CowGetResponse,
+};
+use aws_sdk_dynamodb::types::AttributeValue;
 use getset::Getters;
 
 use ethers::{
@@ -9,6 +13,7 @@ use ethers::{
     types::Address,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug, Serialize, Clone, Default, Getters)]
@@ -91,6 +96,50 @@ impl Order {
             timestamp,
             ..Default::default()
         })
+    }
+
+    pub fn from_dynamodb_item(item: &HashMap<String, AttributeValue>) -> Self {
+        Order {
+            uid: extract_string(item, "uid"),
+            owner: extract_string(item, "owner"),
+            buy_token: extract_string(item, "buy_token"),
+            sell_token: extract_string(item, "sell_token"),
+            buy_decimals: extract_number(item, "buy_decimals") as u8,
+            sell_decimals: extract_number(item, "sell_decimals") as u8,
+            min_buy: extract_number(item, "min_buy") as f64,
+            sell: extract_number(item, "sell") as f64,
+            executed_buy: extract_number(item, "executed_buy") as f64,
+            executed_sell: extract_number(item, "executed_sell") as f64,
+            net_surplus: extract_number(item, "net_surplus") as f64,
+            surplus_percentage: extract_number(item, "surplus_percentage") as f64,
+            zerox_quote_buy: extract_number(item, "zerox_quote_buy") as f64,
+            compared_executed_with_zerox_quote: extract_number(
+                item,
+                "compared_executed_with_zerox_quote",
+            ) as f64,
+            compared_with_zerox_percentage: extract_number(item, "compared_with_zerox_percentage")
+                as f64,
+            cows_own_quote_buy: extract_number(item, "cows_own_quote_buy") as f64,
+            compared_executed_with_cows_own_quote: extract_number(
+                item,
+                "compared_executed_with_cows_own_quote",
+            ) as f64,
+            compared_with_cows_own_quote_percentage: extract_number(
+                item,
+                "compared_with_cows_own_quote_percentage",
+            ) as f64,
+            univ3_swap_buy: extract_number(item, "univ3_swap_buy") as f64,
+            compared_executed_with_univ3_swap: extract_number(
+                item,
+                "compared_executed_with_univ3_swap",
+            ) as f64,
+            compared_with_univ3_swap_percentage: extract_number(
+                item,
+                "compared_with_univ3_swap_percentage",
+            ) as f64,
+            block_number: extract_number(item, "block_number") as u64,
+            timestamp: extract_number(item, "timestamp") as u64,
+        }
     }
 
     fn calculate_percentage(&self, input: f64) -> f64 {

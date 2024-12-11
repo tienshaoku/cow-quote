@@ -1,6 +1,13 @@
-use axum::{http::StatusCode, routing::post, Json, Router};
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use cow_quote::handle_start_service;
-use cow_quote::services::aws_ec2::is_running_in_aws_ec2;
+use cow_quote::order::Order;
+use cow_quote::services::{
+    aws_dynamodb::fetch_latest_from_database, aws_ec2::is_running_in_aws_ec2,
+};
 use tower_http::cors::CorsLayer;
 
 #[tokio::main]
@@ -13,6 +20,7 @@ async fn main() -> eyre::Result<()> {
 
     let api_router = Router::new()
         .route("/start", post(start_service))
+        .route("/latest-data", get(fetch_latest_data))
         // Add CORS middleware
         .layer(CorsLayer::permissive());
 
@@ -26,6 +34,14 @@ async fn main() -> eyre::Result<()> {
 async fn start_service() -> Result<Json<String>, StatusCode> {
     match handle_start_service().await {
         Ok(message) => Ok(Json(message)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn fetch_latest_data() -> Result<Json<Order>, StatusCode> {
+    // Fetch the latest data from the database
+    match fetch_latest_from_database().await {
+        Ok(data) => Ok(Json(data)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }

@@ -1,6 +1,5 @@
 use crate::order::Order;
-use aws_sdk_dynamodb::types::AttributeValue;
-use aws_sdk_dynamodb::Client;
+use aws_sdk_dynamodb::{operation::get_item::GetItemOutput, types::AttributeValue, Client, Error};
 use std::collections::HashMap;
 
 pub struct DynamoDbClient {
@@ -102,6 +101,23 @@ impl DynamoDbClient {
 
         Ok(())
     }
+
+    pub async fn get_item(
+        &self,
+        table_name: &str,
+        key: &str,
+        value: AttributeValue,
+    ) -> eyre::Result<Option<HashMap<String, AttributeValue>>> {
+        let result: GetItemOutput = self
+            .client
+            .get_item()
+            .table_name(table_name)
+            .key(key, value)
+            .send()
+            .await?;
+
+        Ok(result.item)
+    }
 }
 
 fn to_attr(value: impl ToString, attr_type: &str) -> AttributeValue {
@@ -109,4 +125,39 @@ fn to_attr(value: impl ToString, attr_type: &str) -> AttributeValue {
         "N" => AttributeValue::N(value.to_string()),
         _ => AttributeValue::S(value.to_string()),
     }
+}
+
+// TODO:
+// 1. pass client to this function
+// 2. pass key and value
+pub async fn fetch_latest_from_database() -> eyre::Result<Order> {
+    let client = DynamoDbClient::new().await?;
+
+    let table_name = "orders";
+    let key = "uid";
+    let value = AttributeValue::S("0x39f456b902d7fab8becf74bee9e9568ac33f6f7fc6b6cfc37ee34e92adbb2907e5c0830d260bf94c994a2392b7c8d8f2a593f3576759c2b6".to_string());
+
+    let result = client.get_item(table_name, key, value).await?;
+
+    if let Some(item) = result {
+        let order = Order::from_dynamodb_item(&item);
+        println!("Get Order: {:?}", order);
+        Ok(order)
+    } else {
+        Err(eyre::eyre!("Item not found"))
+    }
+}
+
+pub fn extract_number(item: &HashMap<String, AttributeValue>, key: &str) -> u64 {
+    item.get(key)
+        .and_then(|v| v.as_n().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or_default()
+}
+
+pub fn extract_string(item: &HashMap<String, AttributeValue>, key: &str) -> String {
+    item.get(key)
+        .and_then(|v| v.as_s().ok())
+        .map(|v| v.to_string()) // &String to String
+        .unwrap_or_else(|| String::new())
 }
