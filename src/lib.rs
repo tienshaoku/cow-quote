@@ -39,9 +39,7 @@ macro_rules! fetch_quote_and_update_order {
     ($quote_fn:expr, $order:expr, $update_method:ident, $error_msg:expr) => {
         match $quote_fn.await {
             Ok(quote) => $order.$update_method(&quote),
-            Err(e) => {
-                eprintln!("{}: {}", $error_msg, e);
-            }
+            Err(e) => eprintln!("{}: {}", $error_msg, e),
         }
     };
 }
@@ -53,8 +51,7 @@ pub async fn handle_start_service() -> eyre::Result<String> {
 }
 
 pub async fn run_with_timeout() -> eyre::Result<String> {
-    // TODO: change back to 15 mins before live
-    let duration = 2 * 60;
+    let duration = 15 * 60;
 
     tokio::select! {
         _ = run() => Err(eyre::eyre!("Service error")),
@@ -83,82 +80,104 @@ pub async fn run() -> eyre::Result<()> {
     while let Some(Ok((trade, meta))) = stream.next().await {
         let order_uid = trade.order_uid;
 
-        let api_client = reqwest::Client::new();
-        let (cow_api_response, should_proceed) =
-            cowswap_get_order(&api_client, &order_uid.to_string()).await?;
+        let wss_provider_clone = Arc::clone(&wss_provider);
+        let config_clone = Arc::new(config.clone());
+        let aws_client_clone = Arc::new(aws_client.clone());
 
-        // TODO: see if can throw this into a thread
-        if should_proceed {
-            let block_number = meta.block_number.as_u64();
-            println!("New settlement found at block number: {:?}", block_number);
+        tokio::spawn(async move {
+            let api_client = reqwest::Client::new();
+            let (cow_api_response, should_proceed) =
+                match cowswap_get_order(&api_client, &order_uid.to_string()).await {
+                    Ok(response) => response,
+                    Err(e) => {
+                        eprintln!("Failed to get order from CowSwap API: {}", e);
+                        return;
+                    }
+                };
 
-            let timestamp = match wss_provider.get_block(block_number).await? {
-                Some(block) => block.timestamp.as_u64(),
-                None => 0,
-            };
+            if should_proceed {
+                let block_number = meta.block_number.as_u64();
+                println!("New settlement found at block number: {:?}", block_number);
 
-            let mut order = Order::from_cow_api_response(
-                Arc::clone(&wss_provider),
-                order_uid.to_string(),
-                block_number,
-                timestamp,
-                &cow_api_response,
-            )
-            .await?;
+                let timestamp = match wss_provider_clone.get_block(block_number).await {
+                    Ok(Some(block)) => block.timestamp.as_u64(),
+                    _ => 0,
+                };
 
-            let owner = cow_api_response.owner();
-            let sell_token = cow_api_response.sell_token();
-            let sell_amount = cow_api_response.sell();
-            let buy_token = cow_api_response.buy_token();
-
-            fetch_quote_and_update_order!(
-                zerox_quote_buy(
-                    &config,
-                    &api_client,
-                    "1",
-                    owner,
-                    sell_token,
-                    buy_token,
-                    sell_amount
-                ),
-                order,
-                update_zerox_comparison,
-                "0x get quote failed"
-            );
-
-            fetch_quote_and_update_order!(
-                cowswap_quote_buy(&api_client, owner, sell_token, buy_token, sell_amount),
-                order,
-                update_cows_own_quote_comparison,
-                "CowSwap own quote failed"
-            );
-
-            fetch_quote_and_update_order!(
-                uni_swap_buy(
-                    &config,
+                let mut order = match Order::from_cow_api_response(
+                    Arc::clone(&wss_provider_clone),
+                    order_uid.to_string(),
                     block_number,
-                    owner,
-                    sell_token,
-                    buy_token,
-                    sell_amount
-                ),
-                order,
-                update_univ3_swap_comparison,
-                "Uni fork swap failed"
-            );
+                    timestamp,
+                    &cow_api_response,
+                )
+                .await
+                {
+                    Ok(order) => order,
+                    Err(e) => {
+                        eprintln!("Failed to create order from Cow API response: {}", e);
+                        return; // Exit the task early
+                    }
+                };
 
-            if order.no_successful_quote_at_all() {
-                eprintln!("No successful quote at all");
-                continue;
+                let owner = cow_api_response.owner();
+                let sell_token = cow_api_response.sell_token();
+                let sell_amount = cow_api_response.sell();
+                let buy_token = cow_api_response.buy_token();
+
+                fetch_quote_and_update_order!(
+                    zerox_quote_buy(
+                        &config_clone,
+                        &api_client,
+                        "1",
+                        owner,
+                        sell_token,
+                        buy_token,
+                        sell_amount
+                    ),
+                    order,
+                    update_zerox_comparison,
+                    "0x get quote failed"
+                );
+
+                fetch_quote_and_update_order!(
+                    cowswap_quote_buy(&api_client, owner, sell_token, buy_token, sell_amount),
+                    order,
+                    update_cows_own_quote_comparison,
+                    "CowSwap own quote failed"
+                );
+
+                fetch_quote_and_update_order!(
+                    uni_swap_buy(
+                        &config_clone,
+                        block_number,
+                        owner,
+                        sell_token,
+                        buy_token,
+                        sell_amount
+                    ),
+                    order,
+                    update_univ3_swap_comparison,
+                    "Uni fork swap failed"
+                );
+
+                if order.no_successful_quote_at_all() {
+                    eprintln!("No successful quote at all");
+                    return;
+                }
+
+                if let Err(e) = aws_client_clone.upload_order(&order).await {
+                    eprintln!("Failed to upload order {}: {}", order.uid(), e);
+                    return;
+                }
+
+                println!(
+                    "New order recorded in thread: {:?}\n{:#?}\n",
+                    std::thread::current().id(),
+                    order
+                );
             }
-
-            if let Err(e) = aws_client.upload_order(&order).await {
-                eprintln!("Failed to upload order {}: {}", order.uid(), e);
-                continue;
-            }
-
-            println!("Order: {:#?}\n", order);
-        }
+        });
     }
 
     Ok(())

@@ -3,7 +3,7 @@ use ethers::{types::U256, utils::format_units};
 use getset::Getters;
 use std::env;
 
-#[derive(Getters)]
+#[derive(Getters, Clone)]
 #[getset(get = "pub")]
 pub struct EnvConfig {
     alchemy_rpc_url: String,

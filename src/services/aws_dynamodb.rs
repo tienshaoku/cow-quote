@@ -2,6 +2,7 @@ use crate::order::Order;
 use aws_sdk_dynamodb::{operation::get_item::GetItemOutput, types::AttributeValue, Client, Error};
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct DynamoDbClient {
     client: Client,
     table_name: String,
