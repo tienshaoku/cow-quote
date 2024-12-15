@@ -1,5 +1,10 @@
+use crate::helper::EnvConfig;
 use crate::order::Order;
 use aws_sdk_dynamodb::{operation::get_item::GetItemOutput, types::AttributeValue, Client, Error};
+use ethers::{
+    middleware::Middleware,
+    providers::{Http, Provider},
+};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -119,6 +124,27 @@ impl DynamoDbClient {
 
         Ok(result.item)
     }
+
+    pub async fn get_items_with_timestamp(
+        &self,
+        table_name: &str,
+        key: &str,
+        timestamp: AttributeValue,
+    ) -> eyre::Result<Vec<HashMap<String, AttributeValue>>> {
+        let result = self
+            .client
+            .scan()
+            .table_name(table_name)
+            .filter_expression(format!("{} > :val", key))
+            .expression_attribute_values(":val", timestamp)
+            .send()
+            .await?;
+
+        if result.items.is_none() || result.items.as_ref().unwrap().is_empty() {
+            return Err(eyre::eyre!("No items found in the result"));
+        }
+        Ok(result.items.unwrap())
+    }
 }
 
 fn to_attr(value: impl ToString, attr_type: &str) -> AttributeValue {
@@ -128,25 +154,26 @@ fn to_attr(value: impl ToString, attr_type: &str) -> AttributeValue {
     }
 }
 
-// TODO:
-// 1. pass client to this function
-// 2. pass key and value
-pub async fn fetch_latest_from_database() -> eyre::Result<Order> {
+pub async fn fetch_latest_from_database(config: &EnvConfig) -> eyre::Result<Vec<Order>> {
     let client = DynamoDbClient::new().await?;
+    let provider = Provider::<Http>::try_from(config.get_alchemy_http_url())?;
 
     let table_name = "orders";
-    let key = "uid";
-    let value = AttributeValue::S("0x39f456b902d7fab8becf74bee9e9568ac33f6f7fc6b6cfc37ee34e92adbb2907e5c0830d260bf94c994a2392b7c8d8f2a593f3576759c2b6".to_string());
+    let key = "block_number";
+    let block_number = provider.get_block_number().await?;
+    let value = AttributeValue::N((block_number - 15).to_string());
 
-    let result = client.get_item(table_name, key, value).await?;
+    let items = client
+        .get_items_with_timestamp(table_name, key, value)
+        .await?;
 
-    if let Some(item) = result {
+    let mut orders = Vec::new();
+    for item in items {
         let order = Order::from_dynamodb_item(&item);
         println!("Get Order: {:?}", order);
-        Ok(order)
-    } else {
-        Err(eyre::eyre!("Item not found"))
+        orders.push(order);
     }
+    Ok(orders)
 }
 
 pub fn extract_number(item: &HashMap<String, AttributeValue>, key: &str) -> u64 {

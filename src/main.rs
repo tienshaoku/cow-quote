@@ -45,9 +45,11 @@ async fn start_service(
     }
 }
 
-async fn fetch_latest_data() -> Result<Json<Order>, StatusCode> {
+async fn fetch_latest_data(
+    Extension(config): Extension<EnvConfig>,
+) -> Result<Json<Vec<Order>>, StatusCode> {
     // Fetch the latest data from the database
-    match fetch_latest_from_database().await {
+    match fetch_latest_from_database(&config).await {
         Ok(data) => Ok(Json(data)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
