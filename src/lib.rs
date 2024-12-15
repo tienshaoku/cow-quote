@@ -44,17 +44,17 @@ macro_rules! fetch_quote_and_update_order {
     };
 }
 
-pub async fn handle_start_service() -> eyre::Result<String> {
-    tokio::spawn(run_with_timeout());
+pub async fn handle_start_service(config: &EnvConfig) -> eyre::Result<String> {
+    tokio::spawn(run_with_timeout(Arc::new(config.clone())));
 
     Ok("Blockchain service has started".to_string())
 }
 
-pub async fn run_with_timeout() -> eyre::Result<String> {
+pub async fn run_with_timeout(config: Arc<EnvConfig>) -> eyre::Result<String> {
     let duration = 15 * 60;
 
     tokio::select! {
-        _ = run() => Err(eyre::eyre!("Service error")),
+        _ = run(&config) => Err(eyre::eyre!("Service error")),
         // use timeout to end the service
         _ = tokio::time::sleep(Duration::from_secs(duration)) => {
             let message = format!("Service has ended after {} secs", duration);
@@ -64,9 +64,7 @@ pub async fn run_with_timeout() -> eyre::Result<String> {
     }
 }
 
-pub async fn run() -> eyre::Result<()> {
-    let config = EnvConfig::new();
-
+pub async fn run(config: &EnvConfig) -> eyre::Result<()> {
     let wss_provider = Provider::<Ws>::connect(config.get_alchemy_wss_url()).await?;
     let wss_provider = Arc::new(wss_provider);
 
